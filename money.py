@@ -100,7 +100,46 @@ def delete_user_account(user_id):
         return 0
 
 
+def batch_delete_inactive_users():
+    """
+    批量删除不活跃的用户数据。
+    不活跃条件：gold < 2000 且 starstone < 13000 且 kirastone == 0。
 
+    Returns:
+        list: 被成功删除的用户ID列表。
+    """
+    # 确保内存中的数据是来自文件的最新版本
+    load_user_money()
+    
+    uids_to_delete = []
+    for user_id in list(user_money.keys()):
+        user_data = user_money.get(user_id, {})
+        gold = user_data.get('gold', 0)
+        starstone = user_data.get('starstone', 0)
+        kirastone = user_data.get('kirastone', 0)
+        last_login = user_data.get('last_login', 0)
+        # 检查是否同时满足所有条件
+        if last_login < 3000 and gold < 3000 or gold < 2000 and starstone < 13000 and kirastone == 0:
+            uids_to_delete.append(user_id)
+            
+    # 如果没有找到符合条件的用户，则直接返回空列表
+    if not uids_to_delete:
+        return []
+        
+    # 从 user_money 字典中批量删除这些用户
+    for user_id in uids_to_delete:
+        if user_id in user_money:
+            del user_money[user_id]
+            
+    # 将修改后的 user_money 字典一次性写回文件
+    try:
+        with open(path, 'w', encoding='utf8') as f:
+            json.dump(user_money, f, ensure_ascii=False, indent=2)
+        # 成功写入文件后，返回被删除的ID列表
+        return uids_to_delete
+    except Exception as e:
+        hoshino.logger.error(f'批量删除用户数据并写入文件时失败: {e}')
+        return []
 
 def get_user_money(user_id, key):  # 自带初始化的读取钱包功能
     load_user_money()
@@ -120,6 +159,37 @@ def get_user_money(user_id, key):  # 自带初始化的读取钱包功能
             return None
     except:
         return None
+        
+
+        
+
+def get_all_user_money(key):
+    """
+    获取所有用户指定类型(key)的资产数量。
+
+    Args:
+        key (str): 资产的关键字 (例如 "gold", "starstone")。
+
+    Returns:
+        dict: 一个字典，键为用户ID(str)，值为对应的资产数量(int)。
+              如果提供的 key 无效，则返回空字典。
+    """
+    # 1. 检查 key 是否为有效的资产关键字
+    if key not in keyword_list:
+        hoshino.logger.warning(f'无效的资产key: {key}')
+        return {}
+
+    # 2. 确保内存中的用户数据为最新
+    load_user_money()
+
+    # 3. 遍历所有用户，收集指定资产的数据
+    all_users_asset = {}
+    for user_id, data in user_money.items():
+        # 使用 .get() 方法安全地获取资产数量
+        asset_value = data.get(key, config['default'].get(key, 0))
+        all_users_asset[user_id] = asset_value
+
+    return all_users_asset
 
 
 def set_user_money(user_id, key, value):  # 自带初始化的设置货币功能
