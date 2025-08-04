@@ -20,6 +20,8 @@ from hoshino.config import SUPERUSERS
 
 no = get('emotion/no.png').cqcode
 ok = get('emotion/ok.png').cqcode
+luxian1 = get('chongwu/luxian/luxian1.png').cqcode
+luxian2 = get('chongwu/luxian/luxian2.png').cqcode
 sv = Service('pet_raising', manage_priv=priv.ADMIN, enable_on_default=True)
 
 
@@ -519,12 +521,14 @@ async def learn_skill(bot, ev):
         return
     
     # 检查技能槽是否已满
-    if pet["stage"] == 0:
-        max_skills = 1
-    elif pet["stage"] == 1:
-        max_skills = 3
-    elif pet["stage"] == 2:
-        max_skills = 5
+    max_skills = 1
+    if pet["stage"] == 1:
+        max_skills += 2
+    if pet["stage"] == 2:
+        max_skills += 3
+    status = min(pet["max_hunger"], pet["max_happiness"], pet["max_energy"])
+    if status > 999999:
+        max_skills += 999
     if len(pet["skills"]) >= max_skills and user_id not in SUPERUSERS:
         await bot.send(ev, f"你的宠物技能槽已满（当前阶段最多{max_skills}个技能）！", at_sender=True)
         await add_user_item(user_id, "技能药水")
@@ -833,17 +837,35 @@ async def show_pet(bot, ev):
         2: "成年体"
     }.get(pet["stage"], "未知")
     
-    message = [
-        f"\n宠物名称：{pet['name']}",
-        f"种族：{pet['type']} ({stage_name})",
-        f"领养日期: {adopted_date}",
-        f"成长度: {pet['growth']:.1f}/{pet.get('growth_required', 0)}",
-        f"饱食度: {pet['hunger']:.1f}/{pet['max_hunger']} ({hunger_desc})",
-        f"精力: {pet['energy']:.1f}/{pet['max_energy']} ({energy_desc})",
-        f"好感度: {pet['happiness']:.1f}/{pet['max_happiness']} ({happiness_desc})",
-        f"技能: {', '.join(pet['skills']) if pet['skills'] else '暂无'}",
-        "请好好照顾她哦，也可以发送‘宠物帮助’查看全部指令~"
-    ]
+    status = min(pet["max_hunger"], pet["max_happiness"], pet["max_energy"])
+    if pet["stage"] == 2:
+        growth = f"{pet['growth']:.1f}"
+    else:
+        growth = f"{pet['growth']:.1f}/{pet.get('growth_required', 0)}"
+    if status > 999999:
+        message = [
+            f"\n宠物名称：{pet['name']}",
+            f"种族：{pet['type']} ({stage_name})",
+            f"领养日期: {adopted_date}",
+            f"成长值: {growth}",
+            f"饱食度: 『满足』",
+            f"精力: 『活泼』",
+            f"好感度: 『爱慕』",
+            f"技能: {', '.join(pet['skills']) if pet['skills'] else '暂无'}",
+            "请好好照顾她哦，也可以发送‘宠物帮助’查看全部指令~"
+        ]
+    else:
+        message = [
+            f"\n宠物名称：{pet['name']}",
+            f"种族：{pet['type']} ({stage_name})",
+            f"领养日期: {adopted_date}",
+            f"成长值: {growth}",
+            f"饱食度: {pet['hunger']:.1f}/{pet['max_hunger']} ({hunger_desc})",
+            f"精力: {pet['energy']:.1f}/{pet['max_energy']} ({energy_desc})",
+            f"好感度: {pet['happiness']:.1f}/{pet['max_happiness']} ({happiness_desc})",
+            f"技能: {', '.join(pet['skills']) if pet['skills'] else '暂无'}",
+            "请好好照顾她哦，也可以发送‘宠物帮助’查看全部指令~"
+        ]
     
     await bot.send(ev, "\n".join(message), at_sender=True)
 
@@ -981,7 +1003,41 @@ async def my_pet_ranking(bot, ev):
             f"\n成长值: {my_growth:.1f}",
             at_sender=True
         )
-
+@sv.on_prefix(('永恒誓约'))
+async def eternal_oath(bot, ev):
+    user_id = ev.user_id
+    pet = await get_user_pet(user_id)
+    if not pet:
+        await bot.send(ev, "你还没有宠物！", at_sender=True)
+        return
+    
+    pet = await update_pet_status(pet)
+    
+    # 检查宠物
+    status = min(pet["max_hunger"], pet["max_happiness"], pet["max_energy"])
+    if status > 999999:
+        await bot.send(ev, f"\n{pet['name']}有些害羞地看向你...\n“那种事情...不是已经做过了吗...”", at_sender=True)
+        return
+    if pet.get("stage") != 2:
+        await bot.send(ev, f"\n{pet['name']}有些害羞的看着你...\n“hentai！人家...还没成年呢。”", at_sender=True)
+        return
+    if pet["runaway"]:
+        await bot.send(ev, f"{pet['name']}已经离家出走了！使用'最初的契约'可以寻回它。", at_sender=True)
+        return
+    if not await use_user_item(user_id, "誓约戒指"):
+        await bot.send(ev, f"\n{pet['name']}有些失落地看着你...\n“那种事情...没有戒指怎么行...”", at_sender=True)
+        return
+    # 誓约效果
+    pet["energy"] = math.inf
+    pet["happiness"] = math.inf
+    pet["hunger"] = math.inf
+    pet["max_happiness"] = math.inf
+    pet["max_energy"] = math.inf
+    pet["max_hunger"] = math.inf
+    pet['growth'] += 1000
+    pet['growth_rate'] = round(pet['growth_rate'] * 1.1, 2)
+    await update_user_pet(user_id, pet)
+    await bot.send(ev, f"\n(成长值+1000)\n(基础成长速度+10%)\n{pet['name']}有些害羞的看着你，乖巧地等你为她戴上戒指，最后轻轻在你额头上落下一吻...\n“以后...不许丢下我。”", at_sender=True)
 
 
 
@@ -1008,7 +1064,7 @@ pet_help = """
 9. 补充精力 - 消耗1个 【能量饮料】
 10.学习技能 - 消耗1个 【技能药水】（具体请发送 技能帮助）
 11.遗忘 [技能名称] - 消耗1个 【遗忘药水】
-
+12.永恒誓约 - 消耗1个 【誓约戒指】
 
 【宠物管理】
 1. 我的宠物 - 查看宠物状态
@@ -1042,6 +1098,9 @@ async def pet_help_command(bot, ev):
     
 pet_skill = """
 幼年体/成长体/成年体可学习1/3/5个技能
+指令：
+学习技能 （消耗1个技能药水）
+遗忘技能 技能名称 （消耗1个遗忘药水） 
 可学习的技能一览：
 "宝石爱好者": 捡回一些宝石
 "盼望长大":  获得一些成长值
@@ -1056,3 +1115,21 @@ async def pet_skillhelp_command(bot, ev):
     chain = []
     await chain_reply(bot, ev, chain, pet_skill)
     await bot.send_group_forward_msg(group_id=ev.group_id, messages=chain)
+    
+pet_luxian1 = """幼年体→→成长体（三选一）："""
+pet_luxian2 = luxian1
+pet_luxian3 = """成长体→→成年体（固定路线）："""
+pet_luxian4 = luxian2
+pet_luxian5 = """宠物处于『成长体』时，可使用 重置进化路线 来切换进化分支（需消耗1个时之泪）"""
+pet_luxian6 = """当前版本中，同一幼年体的不同的进化分支仅影响种族名称，没有数值差异"""
+
+@sv.on_fullmatch(('查看进化分支','查看进化路线', '宠物进化分支', '宠物进化路线', '进化分支', '进化路线'))
+async def pet_luixanhelp(bot, ev):
+    luxian = []
+    await chain_reply(bot, ev, luxian, pet_luxian1)
+    await chain_reply(bot, ev, luxian, pet_luxian2)
+    await chain_reply(bot, ev, luxian, pet_luxian3)
+    await chain_reply(bot, ev, luxian, pet_luxian4)
+    await chain_reply(bot, ev, luxian, pet_luxian5)
+    await chain_reply(bot, ev, luxian, pet_luxian6)
+    await bot.send_group_forward_msg(group_id=ev.group_id, messages=luxian)

@@ -12,8 +12,7 @@ from .._R import get, userPath
 from .util import shift_time_style, update_serif
 from ..utils import chain_reply, saveData, loadData
 from ..config import SEND_FORWARD, FISH_LIST, PROBABILITY_2, PROBABILITY
-from .get_fish import fishing, buy_bait, free_fish, sell_fish, change_fishrod, compound_bottle, getUserInfo, \
-    increase_value, decrease_value, buy_bottle
+from .get_fish import fishing, buy_bait, free_fish, sell_fish, change_fishrod, compound_bottle, increase_value, decrease_value, buy_bottle
 from .serif import cool_time_serif
 from .get_bottle import get_bottle_amount, check_bottle, format_message, check_permission, check_content, set_bottle, \
     delete_bottle, add_to_blacklist, remove_from_blacklist, show_blacklist, format_msg_no_forward, add_comment, \
@@ -22,7 +21,7 @@ from .._interact import interact, ActSession
 from .evnet_functions import random_event
 from hoshino.typing import CQEvent as Event
 from ..utilize import get_double_mean_money
-from .async_util import user_info_path, USER_DATA_LOCK, load_to_save_data
+from .async_util import user_info_path, USER_DATA_LOCK, load_to_save_data, getUserInfo
 import os
 import asyncio
 
@@ -144,10 +143,15 @@ def generate_probability_message():
         msg += f"{fish}: {percentage:.2f}% \n"
 
     msg += "\n当前活动持续中："
+
+    activities = []
     if config.star_price == 0:
-        msg += "\n十连、百连钓鱼不消耗星星"
-    elif config.extra_gold == 1:
-        msg += "\n未钓到幸运星将补贴300金币"
+        activities.append("\n十连、百连钓鱼不消耗星星")
+    if config.extra_gold == 1:
+        activities.append("\n未钓到幸运星将补贴300金币")
+    
+    if activities:
+        msg += "".join(activities)
     else:
         msg += "\n没有正在进行的活动..."
     return msg
@@ -169,7 +173,7 @@ async def go_fishing(bot, ev):
     if ev.user_id in BLACKUSERS:
         await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
         return
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
 
     # 冷却检测
     if not freq.check(uid) and not config.DEBUG_MODE:
@@ -186,17 +190,17 @@ async def go_fishing(bot, ev):
     #await bot.send(ev, '你开始了钓鱼...')
 
     # 消耗鱼饵
-    decrease_value(uid, 'fish', '🍙', 10, user_info)
+    await decrease_value(uid, 'fish', '🍙', 10, user_info)
 
     # 执行钓鱼逻辑，传递 user_info
-    resp = fishing(uid, user_info=user_info)
+    resp = await fishing(uid, user_info=user_info)
 
     # 处理钓鱼返回结果
     if resp['code'] == 1:
         msg = resp['msg']
         await bot.send(ev, msg, at_sender=True)
     elif resp['code'] == 2:  # 漂流瓶模式
-        increase_value(uid, 'fish', '🔮', 1, user_info)
+        await increase_value(uid, 'fish', '🔮', 1, user_info)
         await bot.send(ev, '你发现鱼竿有着异于平常的感觉，竟然钓到了一颗水之心🔮~', at_sender=True)
     elif resp['code'] == 3:  # 随机事件模式
         choose_ev = random.choice(event_list)
@@ -207,7 +211,7 @@ async def go_fishing(bot, ev):
             interact.add_session(session)
         except ValueError:
             hoshino.logger.error('两个人的随机事件冲突了。')
-            increase_value(uid, 'fish', '✉', 1)
+            await increase_value(uid, 'fish', '✉', 1)
             await bot.send(ev, '你的鱼钩碰到了一个空漂流瓶！可以使用"#扔漂流瓶+内容"使用它哦！')
             return
         session.state['started'] = True
@@ -373,7 +377,7 @@ async def catch_Loli(bot, ev):
     if bosstime == 0:
         await bot.send(ev, '\n鱼塘风平浪静，没有发现蠢萝莉' +no, at_sender=True)
         return
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     
     # 金币检查：在消耗饭团之前，先检查金币是否足够
     user_gold = money.get_user_money(uid, 'gold')  # 获取用户金币
@@ -395,7 +399,7 @@ async def catch_Loli(bot, ev):
         return
     
     # 消耗饭团
-    decrease_value(uid, 'fish', '🍙', config.loliprice, user_info)
+    await decrease_value(uid, 'fish', '🍙', config.loliprice, user_info)
 
     await load_to_save_data(user_info_path, user_info, uid)
     
@@ -475,7 +479,11 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
         await bot.send(ev, '\n操作失败，鱼塘被蠢萝莉占领了，请使用“捉萝莉”将蠢萝莉打败吧！' + no, at_sender=True)
         return
     
-    user_info = getUserInfo(uid)
+    #if uid not in SUPERUSERS:
+        #await bot.send(ev, '\n钓鱼系统维护中，请稍后再试' + no, at_sender=True)
+        #return
+    
+    user_info = await getUserInfo(uid)
     actual_cost = cost * 3 #修正cost计算
     # 检查钓鱼冷却时间
     if left_time(uid) > 0 and uid not in SUPERUSERS:
@@ -497,7 +505,7 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
 
     # 消耗饭团
     if auto_buy == 0:
-        decrease_value(uid, 'fish', '🍙', cost, user_info)
+        await decrease_value(uid, 'fish', '🍙', cost, user_info)
 
     #await bot.send(ev, f'你开始了{command_name}！')
 
@@ -506,7 +514,7 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
     have_star = False
     # 执行钓鱼
     for _ in range(times):
-        resp = fishing(uid, skip_random_events=True, user_info=user_info)
+        resp = await fishing(uid, skip_random_events=True, user_info=user_info)
         if resp['code'] == 1:
             msg = resp['msg']
             # 统计鱼类结果
@@ -543,18 +551,14 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
         summary_message += "\n".join(f"{fish}: {count} 条" for fish, count in result_summary.items())
     else:
         summary_message += "你没有钓到任何有价值的鱼..."
-    if have_star:
-        summary_message += f"\n总价值：{value} 金币"
-    else:
-        if config.extra_gold == 1 and times == 100:
-            money.increase_user_money(uid, 'gold', 300)
-            summary_message += f"\n总价值：{value}+300 金币(含活动补贴)"
-        else:
-            summary_message += f"\n总价值：{value} 金币"
-    if config.star_price == 0:
-        summary_message += f"\n总花费：{actual_cost} 金币"
-    else:
-        summary_message += f"\n总花费：{actual_cost} 金币 {star_cost}星星"
+    summary_message += f"\n总价值：{value}金币"
+    if not have_star and config.extra_gold == 1 and times == 100:
+        money.increase_user_money(uid, 'gold', 300)
+        summary_message += f"+300金币(活动补贴)"
+
+    summary_message += f"\n总花费：{actual_cost}金币"
+    if config.star_price != 0:
+        summary_message += f" {star_cost}星星"
     #if value / actual_cost < 1 and value / actual_cost >= 0.7:
         #summary_message += judge["loss_low"]
     #elif value / actual_cost < 0.7 and value / actual_cost >= 0.3:
@@ -625,7 +629,7 @@ async def buy_bait_func(bot, ev):
 #    if ev.user_id in BLACKUSERS:
 #        await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
 #        return
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     if user_info['fish']['🍙'] > 200000000:
         await bot.send(ev, '背包太满，装不下...' + no)
         return
@@ -641,7 +645,7 @@ async def buy_bait_func(bot, ev):
     if user_gold<num * config.BAIT_PRICE:
         await bot.send(ev, '金币不足喔...\n发送 领低保 来获取启动资金吧~' + no)
         return
-    buy_bait(uid, num)
+    await buy_bait(uid, num)
 #    if not uid % 173 and not uid % 1891433 and not uid % 6:
 #        money.increase_user_money(uid, 'gold', num * config.BAIT_PRICE * 0.04)
     await bot.send(ev, f'已经成功购买{num}个鱼饵啦~(金币-{num * config.BAIT_PRICE})')
@@ -655,7 +659,7 @@ async def buy_bottle_func(bot, ev):
         买漂流瓶(2023.7.18新增)
     """
     uid = ev.user_id
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     if user_info['fish']['✉'] > 50:
         await bot.send(ev, '背包太满，装不下...' + no)
         return
@@ -668,7 +672,7 @@ async def buy_bottle_func(bot, ev):
     if user_gold < num * config.BOTTLE_PRICE:
         await bot.send(ev, '金币不足喔...' + no)
         return
-    buy_bottle(uid, num)
+    await buy_bottle(uid, num)
     await bot.send(ev, f'成功买下{num}个漂流瓶~(金币-{num * config.BOTTLE_PRICE})')
 
 open_bag_command = [i + j + k for i in ['#', '＃', '']
@@ -684,7 +688,7 @@ async def my_fish(bot, ev):
 #    if ev.user_id in BLACKUSERS:
 #        await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
 #        return
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     msg = '背包：\n'
     items = ''
     for i, j in user_info['fish'].items():
@@ -719,21 +723,21 @@ async def free_func(bot, ev):
     else:
         return
     uid = ev.user_id
-    result = free_fish(uid, fish, num)
+    result = await free_fish(uid, fish, num)
     await bot.send(ev, result, at_sender=True)
     
 
 @sv.on_fullmatch('出售小鱼', '#出售小鱼')
 async def sell_small_fish(bot, ev):
     get_gold = 0
-    def q_sell_fish(uid, fish, num, user_info):
+    async def q_sell_fish(uid, fish, num, user_info):
         nonlocal get_gold
         uid = str(uid)
         if not user_info['fish'].get(fish):
             return f'你没有{fish}喔'
         if num > user_info['fish'][fish]:
             num = user_info['fish'][fish]
-        decrease_value(uid, 'fish', fish, num, user_info)
+        await decrease_value(uid, 'fish', fish, num, user_info)
         get_gold += num * fish_price[fish]
         return f'成功卖出{num}条{fish}，最终共获得{num * fish_price[fish]}金币'
 
@@ -741,11 +745,11 @@ async def sell_small_fish(bot, ev):
     if ev.user_id in BLACKUSERS:
         await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
         return
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     fishes = "🐟🦀🦐🐡🐠"
     result = []
     for fish in fishes:
-        result.append(q_sell_fish(uid, fish, 9999, user_info))
+        result.append(await q_sell_fish(uid, fish, 9999, user_info))
 
     money.increase_user_money(uid, 'gold', get_gold)
     await load_to_save_data(user_info_path,user_info,uid)
@@ -756,14 +760,14 @@ async def sell_small_fish(bot, ev):
 @sv.on_fullmatch('一键出售', '#一键出售')
 async def sell_all_fish(bot, ev):
     get_gold = 0
-    def all_sell_fish(uid, fish, num, user_info):
+    async def all_sell_fish(uid, fish, num, user_info):
         nonlocal get_gold
         uid = str(uid)
         if not user_info['fish'].get(fish):
             return f'你没有{fish}喔'
         if num > user_info['fish'][fish]:
             num = user_info['fish'][fish]
-        decrease_value(uid, 'fish', fish, num, user_info)
+        await decrease_value(uid, 'fish', fish, num, user_info)
         get_gold += num * fish_price[fish]
         return f'成功卖出{num}条{fish}，最终共获得{num * fish_price[fish]}金币'
 
@@ -771,11 +775,11 @@ async def sell_all_fish(bot, ev):
 #    if ev.user_id in BLACKUSERS:
 #        await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
 #        return
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     fishes = "🐟🦀🦐🐡🐠🦈🌟"
     result = []
     for fish in fishes:
-        result.append(all_sell_fish(uid, fish, 99999, user_info))
+        result.append(await all_sell_fish(uid, fish, 99999, user_info))
 
     money.increase_user_money(uid, 'gold', get_gold)
     await load_to_save_data(user_info_path,user_info,uid)
@@ -806,13 +810,13 @@ async def free_func(bot, ev):
     else:
         return
     uid = ev.user_id
-    result = sell_fish(uid, fish, num)
+    result = await sell_fish(uid, fish, num)
     await bot.send(ev, result, at_sender=True)
 
 @sv.on_fullmatch('#钓鱼统计', '#钓鱼记录', '＃钓鱼统计', '＃钓鱼记录')
 async def statistic_of_fish(bot, ev):
     uid = ev.user_id
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     free_msg = f"已放生{user_info['statis']['free']}条鱼" if user_info['statis']['free'] else '还没有放生过鱼'
     sell_msg = f"已卖出{user_info['statis']['sell']}金币的鱼" if user_info['statis']['sell'] else '还没有出售过鱼'
     total_msg = f"总共钓上了{user_info['statis']['total_fish']}条鱼" if user_info['statis']['total_fish'] else '还没有钓上过鱼'
@@ -829,7 +833,7 @@ async def change_rod_func(bot, ev):
         return
     _id = int(message)
     uid = ev.user_id
-    result = change_fishrod(uid, _id)
+    result = await change_fishrod(uid, _id)
     await bot.send(ev, result['msg'])
 
 
@@ -859,7 +863,7 @@ async def driftbottle_throw(bot, ev):
     if check_permission(uid):
         await bot.send(ev, '河神拒绝了你的漂流瓶...' + no)
         return
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     if not user_info['fish']['✉']:
         await bot.send(ev, '背包里没有漂流瓶喔' + no)
         return
@@ -872,7 +876,7 @@ async def driftbottle_throw(bot, ev):
         return
     gid = ev.group_id
     _time = ev.time
-    decrease_value(uid, 'fish', '✉', 1)
+    await decrease_value(uid, 'fish', '✉', 1)
     resp = set_bottle(uid, gid, _time, message)
     throw_freq.start_cd(uid)
     await bot.send(ev, '你将漂流瓶放入了水中，目送它漂向诗与远方...')
@@ -964,7 +968,7 @@ async def driftbottle_get(bot, ev):
     uid = ev.user_id
     '''if int(uid) not in SUPERUSERS:
         return'''
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     if user_info['fish']['🔮'] < 1:
         await bot.send(ev, f'捡漂流瓶需要{config.CRYSTAL_TO_NET}个水之心喔' + no)
         return
@@ -984,7 +988,7 @@ async def driftbottle_get(bot, ev):
         content = await format_message(bot, ev, bottle, bottle_id)
         await bot.send_group_forward_msg(group_id=ev.group_id, messages=content)
         get_freq.start_cd(uid)
-        decrease_value(uid, 'fish', '🔮', config.CRYSTAL_TO_NET)
+        await decrease_value(uid, 'fish', '🔮', config.CRYSTAL_TO_NET)
     else:
         content = format_msg_no_forward(bot, ev, bottle, bottle_id)
         await bot.send(ev, content)
@@ -1004,8 +1008,8 @@ async def driftbottle_compound(bot, ev):
         amount = 1
     else:
         amount = int(message)
-    user_info = getUserInfo(uid)
-    result = compound_bottle(uid, amount)
+    user_info = await getUserInfo(uid)
+    result = await compound_bottle(uid, amount)
     await bot.send(ev, result['msg'])
 
 

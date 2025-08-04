@@ -584,7 +584,7 @@ async def handle_buy_stock(bot, ev):
         await bot.send(ev, f'{stock_name} 当前无法交易，请稍后再试。')
         return
 
-    # 计算总成本并添加1%手续费（向上取整）
+    # 计算总成本并添加手续费（向上取整）
     base_cost = current_price * amount_to_buy
     fee = math.ceil(base_cost * 0.01)  # 1%手续费
     total_cost = math.ceil(base_cost) + fee  # 股票成本向上取整 + 手续费
@@ -611,7 +611,7 @@ async def handle_buy_stock(bot, ev):
         await bot.send(ev, '购买失败，扣除金币时发生错误。')
 
 
-@sv.on_rex(r'^卖出\s*(.+股)\s*(\d+)$')
+@sv.on_rex(r'^卖出\s*(.+股)(?:\s*(\d+))?$')
 async def handle_sell_stock(bot, ev):
     user_id = ev.user_id
     
@@ -622,15 +622,17 @@ async def handle_sell_stock(bot, ev):
     
     match = ev['match']
     stock_name = match[1].strip()
+    amount_to_sell = 9999  # 默认值
     
-    try:
-        amount_to_sell = int(match[2])
-        if amount_to_sell <= 0:
-            await bot.send(ev, '出售数量必须是正整数。')
+    if match[2]:  # 如果用户指定了数量
+        try:
+            amount_to_sell = int(match[2])
+            if amount_to_sell <= 0:
+                await bot.send(ev, '出售数量必须是正整数。')
+                return
+        except ValueError:
+            await bot.send(ev, '出售数量无效。')
             return
-    except ValueError:
-         await bot.send(ev, '出售数量无效。')
-         return
 
     if stock_name not in STOCKS:
         await bot.send(ev, f'未知股票: {stock_name}。')
@@ -647,7 +649,7 @@ async def handle_sell_stock(bot, ev):
         await bot.send(ev, f'{stock_name} 当前无法交易，请稍后再试。')
         return
 
-    # 计算总收入并扣除3%手续费（手续费向下取整）
+    # 计算总收入并扣除手续费（手续费向下取整）
     base_earnings = current_price * amount_to_sell
     fee = math.floor(base_earnings * 0.02)  # 手续费
     total_earnings = math.floor(base_earnings) - fee  # 股票收入向下取整 - 手续费
@@ -1128,19 +1130,18 @@ async def handle_start_gamble(bot, ev: CQEvent):
     if not await check_daily_gamble_limit(user_id) and user_id not in SUPERUSERS:
         await bot.send(ev, "你今天已经赌过了，明天再来吧！人生的大起大落可经不起天天折腾哦。", at_sender=True)
         return
-
+    gold = int(money.get_user_money(user_id, 'gold'))
     # 显示规则并请求确认
     rules = f"""\n🎲 一场豪赌 规则 🎲
-你即将开始一场可能改变命运的豪赌！
+你即将开始一场紧张又刺激的豪赌！
 规则如下：
-1. 你将进行最多 {MAX_GAMBLE_ROUNDS} 轮豪赌。
-2. 每一轮，你的现有金币都有几率翻倍，或者骤减。
-3. 你可以在任何一轮结束后选择 '见好就收' 带着当前金币离场。
-4. 一旦开始，直到完成 {MAX_GAMBLE_ROUNDS} 轮或选择收手，否则无法进行其他操作（包括买卖股票）。
-5. 每日仅限一次机会，三思而后行！
-
-"富贵险中求"，确认开始吗？请发送 '确认' 继续。
-发送 '算了' 或其他任意内容取消。"""
+1. 连续{MAX_GAMBLE_ROUNDS}轮豪赌，每一轮，你所持有的【全部金币】都有几率翻倍，或者骤减。
+2. 你可以在任何一轮结束后选择 '见好就收' 带着当前金币离场。
+3 一旦开始，直到完成 {MAX_GAMBLE_ROUNDS} 轮或选择收手，否则无法进行其他操作（包括买卖股票）。
+你当前持有 {gold} 枚金币
+"富贵险中求"，确认开始吗？
+发送 确认 继续。
+发送 算了 取消。"""
 
     # 初始化会话状态
     gambling_sessions[user_id] = {'round': 0, 'confirmed': False, 'active': False} # active=False 表示等待确认

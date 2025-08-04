@@ -9,6 +9,7 @@ from hoshino import priv
 
 from ..call_me_please.util import *
 from .._R import get, userPath
+from hoshino.config import SUPERUSERS
 
 path = os.path.join(userPath, 'call_me_please/nickname.json')
 flmt = FreqLimiter(60)
@@ -95,6 +96,95 @@ async def upload_bg(bot, ev):
         money.reduce_user_money(uid, 'gold', cost_num)
     else:
         await bot.send(ev, '金币不足...' + no)
+@sv.on_fullmatch('金币排行榜','富豪榜','富翁榜')
+async def gold_ranking(bot, ev):
+    all_gold_data = money.get_all_user_money('gold')
+    
+    if not all_gold_data:
+        await bot.send(ev, "排行榜暂无数据。")
+        return
+
+    # 过滤掉 SUPERUSERS 并转换为 (uid, gold) 元组列表
+    ranked_list = [
+        (int(uid), gold)
+        for uid, gold in all_gold_data.items()
+        if int(uid) not in SUPERUSERS
+    ]
+
+    if not ranked_list:
+        await bot.send(ev, "排行榜暂无数据。")
+        return
+
+    # 按金币数量降序排序
+    ranked_list.sort(key=lambda item: item[1], reverse=True)
+
+    # 构建排行榜消息
+    msg_parts = ["\n🏆 金币排行榜-TOP10 🏆"]
+    for rank, (user_id, gold) in enumerate(ranked_list[:10], 1):
+        gold_in_wan = gold / 10000
+        msg_parts.append(f"第{rank}名: {user_id}: {gold_in_wan:.2f}万")
+
+    # 查找并添加当前用户的排名信息
+    current_user_id = ev.user_id
+    user_rank = -1
+    for i, (uid, gold) in enumerate(ranked_list):
+        if uid == current_user_id:
+            user_rank = i + 1
+            break
+            
+    if user_rank != -1:
+        if user_rank <= 50:
+            user_rank_msg = f"您的排名: 第{user_rank}名"
+        else:
+            total_ranked_users = len(ranked_list)
+            percentage = (user_rank / total_ranked_users) * 100
+            user_rank_msg = f"您的排名: 位于前{percentage:.0f}%"
+    else:
+        user_rank_msg = "您未参与排名"
+    
+    msg_parts.append(f"\n{user_rank_msg}")
+    
+    final_message = "\n".join(msg_parts)
+    await bot.send(ev, final_message, at_sender=True)
+    
+
+
+
+
+
+@sv.on_fullmatch('清除过期用户','清理过期用户')
+async def gold_clear(bot, ev):
+    """
+    由SUPERUSERS触发的命令，用于清理不活跃用户数据。
+    """
+    # 权限检查：确保只有 SUPERUSERS 可以执行此操作
+    if ev.user_id not in SUPERUSERS:
+        return
+
+    await bot.send(ev, '正在开始扫描并清理过期用户数据，请稍候...')
+
+    try:
+        # 调用核心处理函数
+        deleted_uids = money.batch_delete_inactive_users()
+
+        # 根据返回结果向管理员报告
+        if not deleted_uids:
+            message = '任务完成：没有找到符合条件的过期用户数据。'
+        else:
+            count = len(deleted_uids)
+            # 为了防止消息过长刷屏，只显示部分ID
+            if count > 20:
+                uid_list_str = '\n'.join(deleted_uids[:20]) + f'\n...等共 {count} 个用户'
+            else:
+                uid_list_str = '\n'.join(deleted_uids)
+            
+            message = f'任务完成！成功清除了 {count} 个过期用户的数据。\n\n被删除的用户ID列表：\n{uid_list_str}'
+            
+        await bot.send(ev, message)
+
+    except Exception as e:
+        hoshino.logger.error(f'执行"清除过期数据"任务时发生意外错误: {e}')
+        await bot.send(ev, f'执行清理任务时发生内部错误，请检查后台日志。\n错误信息: {e}')
 
 
 @sv.on_prefix('清除签到图片', '删除签到图片', '#清除签到图片', '#删除签到图片')

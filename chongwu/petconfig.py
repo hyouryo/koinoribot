@@ -243,14 +243,20 @@ PET_SHOP_ITEMS = {
     "技能药水": {
         "price": 50,
         "effect": "用于学习新技能,使用‘宠物事件’来触发已学习的技能。",
-        "type": "skill_potion"
     },
     "遗忘药水": {
         "price": 10,
         "effect": "用于遗忘指定技能",
-        "type": "forget_potion"
-    }
+    },
+    "誓约戒指": {
+        "price": 5000,
+        "effect": "你的宠物将对你『不离不弃』",
+    },
 }
+
+
+
+
 
 # 宠物状态描述
 STATUS_DESCRIPTIONS = {

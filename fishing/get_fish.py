@@ -1,12 +1,12 @@
 import os
 import random
-
+import copy
 import hoshino
 from . import config
-from ..utils import loadData, saveData
 from .serif import no_fish_serif, get_fish_serif
 from .. import money
 from .._R import userPath
+from .async_util import getUserInfo, load_user_data, save_user_data
 
 
 dbPath = os.path.join(userPath, 'fishing/db')
@@ -23,22 +23,8 @@ init_prob = (5, 10, 65, 5, 15)
 init_prob_2 = tuple([(int(100 / len(config.FISH_LIST)) for i in range(len(config.FISH_LIST)))])
 
 
-def getUserInfo(uid):
-    """
-        获取用户背包，自带初始化
-    """
-    uid = str(uid)
-    total_info = loadData(user_info_path)
-    if uid not in total_info:
-        user_info = default_info
-        total_info[uid] = user_info
-        saveData(total_info, user_info_path)
-    else:
-        user_info = total_info[uid]
-    return user_info
 
-
-def fishing(uid, skip_random_events=False, user_info=None):
+async def fishing(uid, skip_random_events=False, user_info=None):
     """
         mode=0: 普通鱼竿，
         mode=1: 永不空军，不会钓不到东西
@@ -47,7 +33,7 @@ def fishing(uid, skip_random_events=False, user_info=None):
     """
     uid = str(uid)
     if not user_info:
-        user_info = getUserInfo(uid)
+        user_info = await getUserInfo(uid)
     mode = user_info['rod']['current']
     probability = config.PROBABILITY[0 if mode == 3 else mode]  # 第一概率元组
     if not sum(probability) == 100:
@@ -83,8 +69,8 @@ def fishing(uid, skip_random_events=False, user_info=None):
                     break
             multi = random.randint(1, 2) if mode == 3 else 1
             add_msg = f'另外，鱼竿发动了时运效果，{fish}变成了{multi}条！' if multi > 1 else ''
-            increase_value(uid, 'fish', fish, 1 * multi, user_info)
-            increase_value(uid, 'statis', 'total_fish', 1 * multi, user_info)
+            await increase_value(uid, 'fish', fish, 1 * multi, user_info)
+            await increase_value(uid, 'statis', 'total_fish', 1 * multi, user_info)
             msg = f'钓到了一条{fish}~' if random.randint(1, 10) <= 5 else random.choice(get_fish_serif).format(fish)
             msg = msg + add_msg + '\n你将鱼放进了背包。'
             result = {'code': 1, 'msg': msg}
@@ -111,8 +97,8 @@ def fishing(uid, skip_random_events=False, user_info=None):
                 break
         multi = random.randint(1, 2) if mode == 3 else 1
         add_msg = f'另外，鱼竿发动了时运效果，{fish}变成了{multi}条！' if multi > 1 else ''
-        increase_value(uid, 'fish', fish, 1 * multi, user_info)
-        increase_value(uid, 'statis', 'total_fish', 1 * multi, user_info)
+        await increase_value(uid, 'fish', fish, 1 * multi, user_info)
+        await increase_value(uid, 'statis', 'total_fish', 1 * multi, user_info)
         msg = f'钓到了一条{fish}~' if random.randint(1, 10) <= 5 else random.choice(get_fish_serif).format(fish)
         msg = msg + add_msg + '\n你将鱼放进了背包。'
         result = {'code': 1, 'msg': msg}
@@ -134,7 +120,7 @@ def fishing(uid, skip_random_events=False, user_info=None):
         return result
 
 
-def sell_fish(uid, fish, num: int = 1):
+async def sell_fish(uid, fish, num: int = 1):
     """
         卖鱼
 
@@ -143,23 +129,23 @@ def sell_fish(uid, fish, num: int = 1):
     :param num: 出售的鱼数量
     :return: 获得的金币数量
     """
-    getUserInfo(uid)
-    total_info = loadData(user_info_path)
+    await getUserInfo(uid)
+    total_info = await load_user_data(user_info_path)
     uid = str(uid)
     if not total_info[uid]['fish'].get(fish):
         return '数量不够喔'
     if num > total_info[uid]['fish'].get(fish):
         num = total_info[uid]['fish'].get(fish)
-    decrease_value(uid, 'fish', fish, num)
+    await decrease_value(uid, 'fish', fish, num)
     get_golds = fish_price[fish] * num
     money.increase_user_money(uid, 'gold', get_golds)
     if fish == '🍙':
         return f'成功退还了{num}个🍙，兑换了{get_golds}枚金币~'
-    increase_value(uid, 'statis', 'sell', get_golds)
+    await increase_value(uid, 'statis', 'sell', get_golds)
     return f'成功出售了{num}条{fish}, 得到了{get_golds}枚金币~'
 
 
-def free_fish(uid, fish, num: int = 1):
+async def free_fish(uid, fish, num: int = 1):
     """
         放生鱼
 
@@ -168,20 +154,20 @@ def free_fish(uid, fish, num: int = 1):
     :param num: 放生的鱼数量
     :return: 水之心碎片数量
     """
-    getUserInfo(uid)
-    total_info = loadData(user_info_path)
+    await getUserInfo(uid)
+    total_info = await load_user_data(user_info_path)
     uid = str(uid)
     if not total_info[uid]['fish'].get(fish):
         return '数量不足喔'
     if num > total_info[uid]['fish'].get(fish):
         num = total_info[uid]['fish'].get(fish)
-    decrease_value(uid, 'fish', fish, num)
+    await decrease_value(uid, 'fish', fish, num)
     get_frags = fish_price[fish] * num
-    increase_value(uid, 'statis', 'frags', get_frags)
-    increase_value(uid, 'statis', 'free', num)
-    user_frags = getUserInfo(uid)['statis']['frags']
+    await increase_value(uid, 'statis', 'frags', get_frags)
+    await increase_value(uid, 'statis', 'free', num)
+    user_frags = (await getUserInfo(uid))['statis']['frags']
     if user_frags >= config.FRAG_TO_CRYSTAL:
-        increase_value(uid, 'fish', '🔮', int(user_frags / config.FRAG_TO_CRYSTAL))
+        await increase_value(uid, 'fish', '🔮', int(user_frags / config.FRAG_TO_CRYSTAL))
         set_value(uid, 'statis', 'frags', user_frags % config.FRAG_TO_CRYSTAL)
         addition = f'\n一条美人鱼浮出水面！为了表示感谢，TA将{int(user_frags / config.FRAG_TO_CRYSTAL)}颗水之心放入了你的手中~'
     else:
@@ -191,58 +177,58 @@ def free_fish(uid, fish, num: int = 1):
     return f'{num}{classifier}{fish}成功回到了水里，获得{get_frags}个水心碎片~{addition}'
 
 
-def buy_bait(uid, num = 1):
+async def buy_bait(uid, num = 1):
     """
         买鱼饵
     """
     money.reduce_user_money(uid, 'gold', num * config.BAIT_PRICE)
-    increase_value(uid, 'fish', '🍙', num)
+    await increase_value(uid, 'fish', '🍙', num)
 
-def buy_bottle(uid, num = 1):
+async def buy_bottle(uid, num = 1):
     """
         买漂流瓶
     """
     money.reduce_user_money(uid, 'gold', num * config.BOTTLE_PRICE)
-    increase_value(uid, 'fish', '✉', num)
+    await increase_value(uid, 'fish', '✉', num)
 
 
-def change_fishrod(uid, mode: int):
+async def change_fishrod(uid, mode: int):
     """
         更换鱼竿
     """
-    user_info = getUserInfo(uid)
-    total_info = loadData(user_info_path)
+    user_info = await getUserInfo(uid)
+    total_info = await load_user_data(user_info_path)
     uid = str(uid)
     if mode <= 0 or mode > 3:
         return {'code': -1, 'msg': '没有这种鱼竿...'}
     if (mode - 1) not in user_info['rod']['total_rod']:
         return {'code': -1, 'msg': '还没有拿到这个鱼竿喔'}
     total_info[uid]['rod']['current'] = mode - 1
-    saveData(total_info, user_info_path)
+    await save_user_data(user_info_path, total_info)
     return {'code': 1, 'msg': f'已更换为{mode}号鱼竿~'}
 
 
-def compound_bottle(uid, num: int = 1):
-    user_info = getUserInfo(uid)
-    total_info = loadData(user_info_path)
+async def compound_bottle(uid, num: int = 1):
+    user_info = await getUserInfo(uid)
+    total_info = await load_user_data(user_info_path)
     uid = str(uid)
     if user_info['fish']['🔮'] < config.CRYSTAL_TO_BOTTLE:
         return {'code': -1, 'msg': f'要{config.CRYSTAL_TO_BOTTLE}个🔮才可以合成一个漂流瓶体喔'}
     if (num * config.CRYSTAL_TO_BOTTLE) > user_info['fish']['🔮']:
         num = int(user_info['fish']['🔮'] / config.CRYSTAL_TO_BOTTLE)
-    decrease_value(uid, 'fish', '🔮', num * config.CRYSTAL_TO_BOTTLE)
-    increase_value(uid, 'fish', '✉', num)
+    await decrease_value(uid, 'fish', '🔮', num * config.CRYSTAL_TO_BOTTLE)
+    await increase_value(uid, 'fish', '✉', num)
     return {'code': 1, 'msg': f'{num * config.CRYSTAL_TO_BOTTLE}个🔮发出柔和的光芒，融合成了{num}个漂流瓶体！\n可以使用"#扔漂流瓶+内容"来投放漂流瓶了！'}
 
 
-def decrease_value(uid, mainclass, subclass, num, user_info=None):
+async def decrease_value(uid, mainclass, subclass, num, user_info=None):
     """
         减少某物品的数量
     """
     if not user_info:
         uid = str(uid)
-        getUserInfo(uid)
-        total_info = loadData(user_info_path)
+        await getUserInfo(uid)
+        total_info = await load_user_data(user_info_path)
     else:
         if not user_info[mainclass].get(subclass): user_info[mainclass][subclass] = 0
         user_info[mainclass][subclass] -= num
@@ -253,17 +239,17 @@ def decrease_value(uid, mainclass, subclass, num, user_info=None):
     if total_info[uid][mainclass][subclass] < 0:
         total_info[uid][mainclass][subclass] = 0
     if not user_info:
-        saveData(total_info, user_info_path)
+        await save_user_data(user_info_path, total_info)
 
 
-def increase_value(uid, mainclass, subclass, num, user_info=None):
+async def increase_value(uid, mainclass, subclass, num, user_info=None):
     """
         增加某物品的数量
     """
     if not user_info:
         uid = str(uid)
-        getUserInfo(uid)
-        total_info = loadData(user_info_path)
+        await getUserInfo(uid)
+        total_info = await load_user_data(user_info_path)
     else:
         if not user_info[mainclass].get(subclass): user_info[mainclass][subclass] = 0
         user_info[mainclass][subclass] += num
@@ -272,19 +258,19 @@ def increase_value(uid, mainclass, subclass, num, user_info=None):
     if not total_info[uid][mainclass].get(subclass): total_info[uid][mainclass][subclass] = 0
     total_info[uid][mainclass][subclass] += num
     if not user_info:
-        saveData(total_info, user_info_path)
+        await save_user_data(user_info_path, total_info)
 
 
-def set_value(uid, mainclass, subclass, num):
+async def set_value(uid, mainclass, subclass, num):
     """
         直接设置物品数量
     """
     uid = str(uid)
-    getUserInfo(uid)
-    total_info = loadData(user_info_path)
+    await getUserInfo(uid)
+    total_info = await load_user_data(user_info_path)
     if not total_info[uid][mainclass].get(subclass): total_info[uid][mainclass][subclass] = 0
     total_info[uid][mainclass][subclass] = num
-    saveData(total_info, user_info_path)
+    await save_user_data(user_info_path, total_info)
 
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ import aiohttp
 from .. import money
 from ..build_image import BuildImage
 import hoshino
+from hoshino.config import SUPERUSERS
 from .color_convert import lab2rgb
 from .._R import imgPath
 
@@ -43,19 +44,19 @@ badluck = ['忌 抽卡上头', '忌 躺平', '忌 摸鱼', '忌 刷副本',
            '忌 做作业', '忌 刷抖音', '忌 睡懒觉', '忌 刷剧', '忌 无'
            ]
 
-birth_list = ["1232", "0422"
+birth_list = ["1232", "0422", "0504", "0725", "0711"
               ]
 
-member_list = ["冰祈", "御子柴"
+member_list = ["冰祈", "御子柴", "梦灵", "梦馨", "《灵歌少女》" 
                ]
 
-event_list = ['0101', '0129', '0212', '0214', '0308', '0401', '0404', '0501',
-              '0601', '0531', '0701', '0801', '0829', '1006', '1001',
+event_list = ['0101', '0129', '0212', '0214', '0308', '0401', '0404', '0410', '0501', '0504',
+              '0601', '0531', '0701', '0707', '0721', '0801', '0829', '1006', '1001',
               '1010', '1011', '1101', '1111', '1224', '1225'
               ]
 
-event_name_list = ['元旦节', '春节', '元宵节', '情人节', '妇女节', '愚人节', '清明节', '劳动节',
-                   '儿童节', '端午节', '建党节', '建军节', '七夕节', '中秋节', '国庆节',
+event_name_list = ['元旦节', '春节', '元宵节', '情人节', '妇女节', '愚人节', '清明节', '图书馆纪念日', '劳动节', '梦月生日',
+                   '儿童节', '端午节', '建党节', '图书馆纪念日', '0721节', '建军节', '七夕节', '中秋节', '国庆节',
                    '萌节', '萝莉节', '万圣节', '光棍节', '平安夜', '圣诞节'
                    ]
 
@@ -133,18 +134,19 @@ async def as_login_v3(uid, username, qqname, nick_flag):
     luckygold_msg = ''  # 总收益中幸运币提示
     total_get_msg = ''  # 今日签到总收益提示
 
-    # 延迟6小时
-    current_time = time.localtime(time.time()-21600)
+    # 延迟6小时(可选)
+    #current_time = time.localtime(time.time()-21600)
+    current_time = time.localtime(time.time())
     days = int(time.strftime("%d", current_time))  # 日期-日
     months = int(time.strftime("%m", current_time))  # 日期-月
     week = int(time.strftime("%w", current_time))  # 日期-礼拜
 
     last_login = int(money.get_user_money(uid, "last_login"))  # 是否最近签到
-    gold = 50  # 签到增加的基础金币
-    if not debug_mode:
+    gold = 100  # 签到增加的基础金币
+    if uid not in SUPERUSERS:
         login_flag = 1 if int(f'{months}0{days}') == last_login else 0  # 是否已签到
     else:
-        login_flag = debug_login_flag
+        login_flag = 0
 
 #    birth_flag, event_flag = get_day(days, months, login_flag)  # 节日标志
     # === 节日事件与生日事件 === birth_flag, event_fag ===
@@ -159,7 +161,7 @@ async def as_login_v3(uid, username, qqname, nick_flag):
             birth_flag = 1
             birthday_msg = f'{member_list[i]}的生日'
             if login_flag == 0:
-                extra_msg += f'☆ 星星+2400生日)\n☆ 金币+3000 (生日)\n'
+                extra_msg += f'☆ 星星+2400(生日)\n☆ 金币+5000(生日)\n'
             break
         i += 1
     i = 0
@@ -168,7 +170,7 @@ async def as_login_v3(uid, username, qqname, nick_flag):
             event_flag = 1
             festival_msg = f'{event_name_list[i]}'
             if login_flag == 0:
-                extra_msg += f'☆ 星星+1600(节日)\n☆ 金币+2000 (节日)\n'
+                extra_msg += f'☆ 星星+1600(节日)\n☆ 金币+3600(节日)\n'
             break
         i += 1
     if not login_flag:
@@ -208,8 +210,8 @@ async def as_login_v3(uid, username, qqname, nick_flag):
 
     gold += rp
     logindays = money.get_user_money(uid, "logindays")
-    star_add = min(1000, (logindays // 10) * 100)
-    gold_add = random.randint(10 + logindays // 10 * 10, 100 + logindays // 10 * 10)
+    star_add = min(random.randint(100 + logindays // 5 * 25, 200 + logindays // 5 * 50), 5000)
+    gold_add = min(random.randint(50 + logindays // 2 * 5, 100 + logindays // 1 * 5), 2500)
     #gold_add = min(100, max(0, (logindays // 10) * 5))
 
     # === 日期+签到天数 ===
@@ -226,7 +228,7 @@ async def as_login_v3(uid, username, qqname, nick_flag):
                 money.set_user_background(uid, random.choice(backgroundList))
                 money.set_user_bg_mode(uid, 0)
         num = rp * 5 + birth_flag * 2400 + event_flag * 1600 + star_add
-        gold += birth_flag * 3000 + event_flag * 2000 + gold_add
+        gold += birth_flag * 5000 + event_flag * 3600 + gold_add
         money.increase_user_money(uid, "starstone", num)  # 星星
         money.increase_user_money(uid, 'gold', gold)  # 金币
         money.set_user_money(uid, "last_login", int(f'{months}0{days}'))
@@ -411,6 +413,47 @@ async def as_login_v3(uid, username, qqname, nick_flag):
     return imageToSend
 
 
+
+def get_user_gold_rank_str(current_user_id: int) -> str:
+    """
+    获取单个用户的金币排名，并返回格式化后的字符串。
+    """
+    if current_user_id in SUPERUSERS:
+        return ""
+
+    all_gold_data = money.get_all_user_money('gold')
+    if not all_gold_data:
+        return ""
+
+    ranked_list = [
+        (int(uid), gold)
+        for uid, gold in all_gold_data.items()
+        if int(uid) not in SUPERUSERS
+    ]
+    if not ranked_list:
+        return ""
+
+    ranked_list.sort(key=lambda item: item[1], reverse=True)
+
+    user_rank = -1
+    total_ranked_users = len(ranked_list)
+    for i, (uid, gold) in enumerate(ranked_list):
+        if uid == current_user_id:
+            user_rank = i + 1
+            break
+
+    if user_rank == -1:
+        return f"(未参与排名)"
+    
+    if user_rank <= 50:
+        return f"(位于第{user_rank}名)"
+    else:
+        percentage = (user_rank / total_ranked_users) * 100
+        return f"(位于前{percentage:.0f}%)"
+
+
+
+
 async def get_purse(uid, user_name, guild_flag = 0):
     normal_bg_list = ['purse_01.jpg', 'purse_02.jpg', 'purse_05.jpg', 'purse_09.jpg']
     normal_coin_bg = 'purse_03.jpg'
@@ -519,16 +562,28 @@ async def get_purse(uid, user_name, guild_flag = 0):
         user_name = f'{user_name[:9]}...'
     name_text = BuildImage(0, 0, plain_text=f'{user_name}的钱包', font_size=35, font='yz.ttf', font_color=font_color)
     bg.paste(img = name_text, pos = (122, 25), alpha=True)
-
+    # === 获取排名字符串 ===  
+    rank_str = get_user_gold_rank_str(uid)
     # === 钱 ===
     star_text = BuildImage(0, 0, plain_text=f'星星 {user_starstone}颗', font_size=30, font='yz.ttf', font_color=font_color)
     bg.paste(img = star_text, pos = (160, 128), alpha=True)
     gold_text = BuildImage(0, 0, plain_text=f'金币 {user_gold}枚', font_size=30, font='yz.ttf', font_color=font_color)
     bg.paste(img = gold_text, pos = (280, 187), alpha=True)
+    # --- 绘制排名信息 ---
+    if rank_str: 
+        # 使用更小的字体
+        rank_font_size = 13 
+        rank_text = BuildImage(0, 0, plain_text=rank_str, font_size=rank_font_size, font='yz.ttf', font_color=font_color) ## <-- 新增
+        
+        # 将排名文本放置在金币数量的右下方
+        rank_pos_x = 350  # X坐标
+        rank_pos_y = 190 + gold_text.h  # Y坐标微调 
+        bg.paste(img=rank_text, pos=(rank_pos_x, rank_pos_y), alpha=True) 
+    # --- 结束绘制排名信息 ---
     lucky_text = BuildImage(0, 0, plain_text=f'幸运币 {user_lucky}枚', font_size=30, font='yz.ttf', font_color=font_color)
     bg.paste(img = lucky_text, pos = (100, 245), alpha=True)
     kirastone_text = BuildImage(0, 0, plain_text=f'宝石 {user_kirastone}颗', font_size=30, font='yz.ttf', font_color=font_color)
-    bg.paste(img = kirastone_text, pos = (380, 98), alpha=True) # 粘贴位置根据图片实际布局调整
+    bg.paste(img = kirastone_text, pos = (420, 78), alpha=True)# 粘贴位置根据图片实际布局调整
     # 结束
     if save_image_mode:
         bg.save(path = os.path.join(os.path.dirname(__file__), f'cache/{uid}.jpg'))

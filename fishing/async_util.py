@@ -25,6 +25,12 @@ user_info_path = os.path.join(dbPath, 'user_info.json')
 # 锁防止并发问题
 USER_DATA_LOCK = asyncio.Lock()
 
+
+default_info = {
+    'fish': {'🐟': 0, '🦐': 0, '🦀': 0, '🐡': 0, '🐠': 0, '🔮': 0, '✉': 0, '🍙': 0},
+    'statis': {'free': 0, 'sell': 0, 'total_fish': 0, 'frags': 0},
+    'rod': {'current': 0, 'total_rod': [0]}
+}
 # --- 辅助函数 ---
 async def load_json_data(filename, default_data):
     """异步安全地加载JSON数据"""
@@ -55,18 +61,29 @@ def with_lock(lock):
                 return await func(*args, **kwargs)  # 执行函数
         return wrapped
     return decorator
+    
 
-    # async with lock:
-    #     total_info = loadData(user_info_path)
-    #     total_info[uid] = user_info
-    #     saveData(total_info, user_info_path)
+@with_lock(USER_DATA_LOCK)
+async def getUserInfo(uid):
+    """
+        获取用户背包，自带初始化
+    """
+    uid = str(uid)
+    total_info = await load_user_data(user_info_path)
+    if uid not in total_info:
+        user_info = default_info
+        total_info[uid] = user_info
+        await save_user_data(user_info_path,total_info)
+    else:
+        user_info = total_info[uid]
+    return user_info
 
 async def load_user_data(user_path):
-    await load_json_data(user_path,{})
+    return await load_json_data(user_path,{})
 
 async def save_user_data(user_path,data):
     await save_json_data(user_path,data)
-#load_to_save_data(user_info_path,user_info,uid)
+
 @with_lock(USER_DATA_LOCK)
 async def load_to_save_data(user_path,user_info,uid):
     try:
