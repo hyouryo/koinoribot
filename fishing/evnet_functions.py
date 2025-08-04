@@ -1,5 +1,6 @@
 import random
-from .get_fish import increase_value, getUserInfo, decrease_value
+from .get_fish import increase_value, decrease_value
+from .async_util import getUserInfo
 from .. import money
 
 
@@ -29,7 +30,7 @@ async def ev1_2(bot, ev, uid):
 
 async def ev1_3(bot, ev, uid):
     await bot.send(ev, '美人鱼点了点头，将饭团递给了你。(鱼饵+2)', at_sender = True)
-    increase_value(uid, 'fish', '🍙', 2)
+    await increase_value(uid, 'fish', '🍙', 2)
     return
 
 
@@ -38,12 +39,12 @@ async def ev1_4(bot, ev, uid):
     if choose == 8:
         await bot.send(ev, '你的诚实打动了美人鱼，她将所有的饭团都递给了你！(金币+150，🍙+2)', at_sender = True)
         money.increase_user_money(uid, 'gold', 150)
-        increase_value(uid, 'fish', '🍙', 2)
+        await increase_value(uid, 'fish', '🍙', 2)
         return
     else:
         if choose > 2:
             await bot.send(ev, '美人鱼表扬了你的诚实，将鱼饵饭团送给了你。(🍙+2)', at_sender = True)
-            increase_value(uid, 'fish', '🍙', 2)
+            await increase_value(uid, 'fish', '🍙', 2)
             return
         else:
             await bot.send(ev, '美人鱼点了点头，道谢后回到了水里。')
@@ -55,7 +56,7 @@ async def ev2_1(bot, ev, uid):
     if user_gold > 15:
         bait_num = random.randint(2, 3)
         money.reduce_user_money(uid, 'gold', 15)
-        increase_value(uid, 'fish', '🍙', bait_num)
+        await increase_value(uid, 'fish', '🍙', bait_num)
         await bot.send(ev, f'他显得很高兴，在自己的口袋里摸索了半天，"瞧瞧我今天为你准备了什么！给你啦！"(🍙+{bait_num})', at_sender = True)
         return
     else:
@@ -69,7 +70,7 @@ async def ev2_2(bot, ev, uid):
     if user_lucky > 2:
         crystal_num = random.randint(1, 3)
         money.reduce_user_money(uid, 'luckygold', 2)
-        increase_value(uid, 'fish', '🔮', crystal_num)
+        await increase_value(uid, 'fish', '🔮', crystal_num)
         await bot.send(ev, f'他显得很高兴，在自己的口袋里摸索了半天，"瞧瞧我今天为你准备了什么！给你啦！"(🔮+{crystal_num})', at_sender = True)
         return
     else:
@@ -85,16 +86,16 @@ async def ev2_3(bot, ev, uid):
         return
     else:
         fish = random.choice(['🐟', '🦐', '🦀', '🐡', '🐠'])
-        increase_value(uid, 'fish', fish, 1)
-        increase_value(uid, 'statis', 'total_fish', 1)
+        await increase_value(uid, 'fish', fish, 1)
+        await increase_value(uid, 'statis', 'total_fish', 1)
         await bot.send(ev, f'“你推我做什么!!哎呀你这人!”他大喊大叫着走了。回到竿前，你发现一条鱼正在咬钩。({fish}+1)', at_sender = True)
         return
 
 
 async def ev3_1(bot, ev, uid):
     fish_num = random.randint(2, 5)
-    increase_value(uid, 'fish', '🐟', fish_num)
-    increase_value(uid, 'statis', 'total_fish', fish_num)
+    await increase_value(uid, 'fish', '🐟', fish_num)
+    await increase_value(uid, 'statis', 'total_fish', fish_num)
     await bot.send(ev, f'你屏息凝神，发现鱼比往常更加活跃，趁着大雨连续钓到了{fish_num}条鱼！(🐟+{fish_num})', at_sender = True)
     return
 
@@ -111,8 +112,8 @@ async def ev4_1(bot, ev, uid):
     if choose == 1:
         await bot.send(ev, '文字散发出白色的光芒，水里的鱼儿开始躁动不安，纷纷往岸边游去。你收获颇丰。(🐟🦐🦀🐡🐠各+1)', at_sender = True)
         for i in ['🐟', '🦐', '🦀', '🐡', '🐠']:
-            increase_value(uid, 'fish', i, 1)
-        increase_value(uid, 'statis', 'total_fish', 5)
+            await increase_value(uid, 'fish', i, 1)
+        await increase_value(uid, 'statis', 'total_fish', 5)
         return
     elif choose == 2:
         gold_num = random.randint(10, 25)
@@ -133,19 +134,19 @@ async def ev4_1(bot, ev, uid):
 async def ev4_2(bot, ev, uid):
     choose = random.randint(1, 2)
     if choose == 1:
-        increase_value(uid, 'fish', '🔮', 1)
+        await increase_value(uid, 'fish', '🔮', 1)
         await bot.send(ev, '你默默阅读着文字。书中的魔力引导着你的思绪，使你仿佛徜徉于海底。回过神来，发现手中已没有了书，而是握着一颗水之心。(水之心+1)', at_sender = True)
         return
     else:
         await bot.send(ev, '你默默阅读着文字。书中的魔力引导着你的思绪，使你仿佛翱翔于天际。回过神来，发现自己正躺在地上，那本书也没有了踪迹。(🍙+1)', at_sender = True)
-        increase_value(uid, 'fish', '🍙', 1)
+        await increase_value(uid, 'fish', '🍙', 1)
         return
 
 
 async def ev4_3(bot, ev, uid):
     fish = random.choice(['🐟', '🦐', '🦀'])
-    increase_value(uid, 'fish', fish, 1)
-    increase_value(uid, 'statis', 'total_fish', 1)
+    await increase_value(uid, 'fish', fish, 1)
+    await increase_value(uid, 'statis', 'total_fish', 1)
     await bot.send(ev, f'你感觉到书本散发的能量超出了自己的认知，还是尽快脱手为好。不久后你钓上了一条{fish}。', at_sender = True)
     return
 
@@ -165,13 +166,13 @@ async def ev5_1(bot, ev, uid):
         return
     elif choose == 3:
         bait_num = random.randint(2, 3)
-        increase_value(uid, 'fish', '🍙', bait_num)
+        await increase_value(uid, 'fish', '🍙', bait_num)
         await bot.send(ev, msg + f'出货口掉出了一袋鱼饵。(鱼饵+{bait_num})', at_sender = True)
         return
     else:
         fish = random.choice(['🦐', '🦀', '🐡', '🐠'])
-        increase_value(uid, 'fish', fish, 1)
-        increase_value(uid, 'statis', 'total_fish', 1)
+        await increase_value(uid, 'fish', fish, 1)
+        await increase_value(uid, 'statis', 'total_fish', 1)
         await bot.send(ev, msg + f'什么事也没有发生。你感觉受到了欺骗，丢掉老虎机后继续钓起了鱼。({fish}+1)', at_sender = True)
         return
 
@@ -179,7 +180,7 @@ async def ev5_1(bot, ev, uid):
 async def ev5_2(bot, ev, uid):
     msg = '你将一枚幸运币放入投币口，拉下拉杆，一阵响动后，'
     money.reduce_user_money(uid, 'luckygold', 1)
-    increase_value(uid, 'fish', '🔮', 1)
+    await increase_value(uid, 'fish', '🔮', 1)
     await bot.send(ev, msg + '老虎机渐渐被柔和的光包围，与此同时其形状也开始发生变化，最终化为了一颗水之心，静静地躺在你的手里。(🔮+1)', at_sender = True)
     return
 
@@ -188,8 +189,8 @@ async def ev5_3(bot, ev, uid):
     choose = random.randint(1, 2)
     if choose == 1:
         fish = random.choice(['🦐', '🦀', '🐡', '🐠'])
-        increase_value(uid, 'fish', fish, 1)
-        increase_value(uid, 'statis', 'total_fish', 1)
+        await increase_value(uid, 'fish', fish, 1)
+        await increase_value(uid, 'statis', 'total_fish', 1)
         await bot.send(ev, f'你感觉这个在水里泡过的老虎机并不会正常工作，于是将它丢回了水里并继续钓起了鱼。({fish}+1)')
         return
     else:
@@ -211,8 +212,8 @@ async def ev6_1(bot, ev, uid):
         for i in range(3):
             fish = random.choice(['🐟', '🦐', '🦀', '🐡', '🐠'])
             fishes.append(fish)
-            increase_value(uid, 'fish', fish, 1)
-        increase_value(uid, 'statis', 'total_fish', 3)
+            await increase_value(uid, 'fish', fish, 1)
+        await increase_value(uid, 'statis', 'total_fish', 3)
         await bot.send(ev, f'喝下水后，你感觉自己的感官变得十分敏锐，短时间内连续钓上了三条鱼。(获得{fishes[0]}{fishes[1]}{fishes[2]})')
         return
     else:
@@ -222,29 +223,29 @@ async def ev6_1(bot, ev, uid):
 
 async def ev6_2(bot, ev, uid):
     fish = random.choice(['🐟', '🦐', '🦀', '🐡', '🐠'])
-    increase_value(uid, 'fish', fish, 1)
-    increase_value(uid, 'statis', 'total_fish', 1)
+    await increase_value(uid, 'fish', fish, 1)
+    await increase_value(uid, 'statis', 'total_fish', 1)
     await bot.send(ev, f'你感觉这个水并不卫生，倒了一些出来研究了一番，无果后将水瓶扔回了水里，随后继续钓起了鱼。({fish}+1)')
     return
 
 
 async def ev7_1(bot, ev, uid):
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     fish = random.choice(['🐟', '🦐', '🦀', '🐡', '🐠'])
-    increase_value(uid, 'statis', 'total_fish', 1)
-    increase_value(uid, 'fish', '🔮', 1)
+    await increase_value(uid, 'statis', 'total_fish', 1)
+    await increase_value(uid, 'fish', '🔮', 1)
     await bot.send(ev, f'你将正好钓上来的{fish}分给了猫咪，它竖着尾巴快速跑开了。正要回去时你看到刚才的猫咪叼着一颗水之心，似乎想要将它送给你。(🔮+1)')
     return
 
 
 async def ev7_2(bot, ev, uid):
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
     if not user_info['fish']['🍙']:
         fish = random.choice(['🐟', '🦐'])
-        increase_value(uid, 'fish', fish, 1)
+        await increase_value(uid, 'fish', fish, 1)
         await bot.send(ev, f'你发现包里已经没有了饭团，只好摸了摸猫咪的头，猫咪恋恋不舍地离开了。你继续钓起了鱼。({fish}+1)')
         return
-    decrease_value(uid, 'fish', '🍙', 1)
+    await decrease_value(uid, 'fish', '🍙', 1)
     money.increase_user_money(uid, 'luckygold', 1)
     await bot.send(ev, '你将一颗饭团分给了猫咪，它竖着尾巴快速跑开了。正要回去时你看到刚才的猫咪叼着一枚幸运币，似乎想要将它送给你。(幸运币+1)')
     return
@@ -252,7 +253,7 @@ async def ev7_2(bot, ev, uid):
 
 async def ev7_3(bot, ev, uid):
     fish = random.choice(['🐟', '🦐', '🦀', '🐡', '🐠'])
-    increase_value(uid, 'fish', fish, 1)
+    await increase_value(uid, 'fish', fish, 1)
     await bot.send(ev, f'你摸了摸猫咪的头，并继续钓起了鱼，猫咪逗留了一会后离开了。({fish}+1)')
     return
 
