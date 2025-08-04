@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from ..utils import chain_reply
 from .._R import get, userPath
-from ..fishing.get_fish import getUserInfo
+from ..fishing.async_util import getUserInfo
 from hoshino import Service, priv, R
 from hoshino.typing import CQEvent, MessageSegment
 from .. import money, config
@@ -1072,6 +1072,8 @@ async def record_gamble_today(user_id):
 
 def get_gamble_win_probability(gold, uid):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
+    if uid in SUPERUSERS:
+        return 0.99
     if gold < 10000:
         return 0.90
     elif gold < 50000:
@@ -1297,15 +1299,7 @@ async def transfer_money(bot, ev):
         await bot.send(ev, "\n对方正处于豪赌过程中，不能转账哦~" +no, at_sender=True)
         return
         
-    sender_info = getUserInfo(sender_uid)
-    recipient_info = getUserInfo(recipient_uid)
-    
-    if not sender_info:
-        await bot.send(ev, '转账人信息不存在')
-        return
-    if not recipient_info:
-        await bot.send(ev, '收款人信息不存在')
-        return
+
     if amount < 20:
         await bot.send(ev, '错误金额')
         return
@@ -1358,10 +1352,6 @@ async def admin_add_money(bot, ev):
     target_uid = int(match[1])
     amount = int(match[2])
     
-    target_info = getUserInfo(target_uid)
-    if not target_info:
-        await bot.send(ev, '目标用户信息不存在')
-        return
     
     # 执行打款
     money.increase_user_money(target_uid, 'gold', amount)
@@ -1382,10 +1372,7 @@ async def admin_reduce_money(bot, ev):
     target_uid = int(match[1])
     amount = int(match[2])
     
-    target_info = getUserInfo(target_uid)
-    if not target_info:
-        await bot.send(ev, '目标用户信息不存在')
-        return
+
         
     # 获取用户金币数量
     target_gold = money.get_user_money(target_uid, 'gold')
@@ -1460,7 +1447,7 @@ async def diabo(bot, ev):
 
 
     # 3. 获取用户信息 (直接从数据库获取)
-    user_info = getUserInfo(uid)
+    user_info = await getUserInfo(uid)
 
     # 4 检查股票持仓
     user_portfolio = await get_user_portfolio(uid)  # 使用股票市场模块的函数获取持仓
