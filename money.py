@@ -119,7 +119,7 @@ def batch_delete_inactive_users():
         kirastone = user_data.get('kirastone', 0)
         last_login = user_data.get('last_login', 0)
         # 检查是否同时满足所有条件
-        if last_login < 3000 and gold < 3000 or gold < 2000 and starstone < 13000 and kirastone == 0:
+        if gold < 2000 and starstone < 50000 and kirastone == 0:
             uids_to_delete.append(user_id)
             
     # 如果没有找到符合条件的用户，则直接返回空列表
