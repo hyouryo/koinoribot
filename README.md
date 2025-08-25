@@ -6,12 +6,15 @@
 
 ## 部署方法
 
-> - 下载HoshinoBot仓库
+> - 安装Hoshinobot
 > - 下载本仓库，将koinoribot文件夹解压至 `hoshino/modules` 里。
-> - 安装python3.8.0
-> - pip安装 `requirements.txt` 内的所有依赖（直接装koinoribot里的就行，已涵盖HoshinoBot/requirements.txt中的所有依赖）。
+> - 安装python3.8.0(可根据习惯添加命令行后缀)
+> - cd 进入hoshino/modules/koinoribot文件夹
+> - pip安装 `requirements.txt` 内的所有依赖（直接装koinoribot里的就行，已涵盖HoshinoBot/requirements.txt中的所有依赖）。（示例代码：`pip3.8 install -r requirements.txt` ）
 > - 将`hoshinobot/hoshino/config_example`文件夹更名为`hoshinobot/hoshino/config`
 > - 在 `hoshino/config/__bot__.py` 中的 `MODULES_ON` 里新增一行 `"koinoribot",`。
+> - cd 进入hoshino根目录，启动项目。（示例代码：`python3.8 run.py`）
+
 
 <details>
  <summary> 注意事项 </summary> 
@@ -34,7 +37,7 @@
 
 
 <details>
- <summary> 关于如何安装hoshino </summary> 
+ <summary> 关于如何安装Hoshinobot </summary> 
 
 - 仓库传送门 [Hoshinobot](https://github.com/Ice9Coffee/HoshinoBot) (作者： [Ice9Coffee](https://github.com/Ice9Coffee))
 
