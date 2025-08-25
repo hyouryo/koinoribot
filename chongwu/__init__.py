@@ -521,11 +521,7 @@ async def learn_skill(bot, ev):
         return
     
     # 检查技能槽是否已满
-    max_skills = 1
-    if pet["stage"] == 1:
-        max_skills += 2
-    if pet["stage"] == 2:
-        max_skills += 3
+    max_skills = 1 + pet["stage"] * 2
     status = min(pet["max_hunger"], pet["max_happiness"], pet["max_energy"])
     if status > 999999:
         max_skills += 999

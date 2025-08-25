@@ -8,13 +8,8 @@ from datetime import datetime, timedelta
 import math
 import asyncio
 import io
-from ..utils import chain_reply
 from .._R import get, userPath
-from hoshino import Service, priv, R
-from hoshino.typing import CQEvent, MessageSegment
-from .. import money
 from .petconfig import GACHA_COST, GACHA_REWARDS, GACHA_CONSOLE_PRIZE, BASE_PETS, EVOLUTIONS, growth1, growth2, growth3, PET_SHOP_ITEMS, STATUS_DESCRIPTIONS
-from hoshino.config import SUPERUSERS
 
 PET_DATA_DIR = os.path.join(userPath, 'chongwu')
 USER_PET_DATABASE = os.path.join(PET_DATA_DIR, 'user_pets.json')

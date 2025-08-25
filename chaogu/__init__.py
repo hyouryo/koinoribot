@@ -15,6 +15,7 @@ from ..fishing.async_util import getUserInfo
 from hoshino import Service, priv, R
 from hoshino.typing import CQEvent, MessageSegment
 from .. import money, config
+from ..chongwu.pet import get_user_pet
 from collections import defaultdict
 sv = Service('stock_market', manage_priv=priv.ADMIN, enable_on_default=True)
 from hoshino.config import SUPERUSERS
@@ -1072,8 +1073,6 @@ async def record_gamble_today(user_id):
 
 def get_gamble_win_probability(gold, uid):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
-    if uid in SUPERUSERS:
-        return 0.99
     if gold < 10000:
         return 0.90
     elif gold < 50000:
@@ -1274,9 +1273,7 @@ async def handle_stop_gamble(bot, ev: CQEvent):
 
 ##################################################################################################################
 # 转账手续费比例
-TRANSFER_FEE_RATE = 0.1
-# 管理员 UID
-ADMIN_UID = 180162404
+TRANSFER_FEE_RATE = config.transfer_fee
 
 # 1. 用户转账功能
 @sv.on_rex(r'^转账\s*(\d+)\s*(\d+)$')
@@ -1314,7 +1311,7 @@ async def transfer_money(bot, ev):
         await bot.send(ev, '无法获取转账人金币数量')
         return
     if gold < total_amount:
-        await bot.send(ev, f'\n余额不足，本次转账需要 {total_amount} 金币，包含 {fee} 金币手续费' +no, at_sender=True)
+        await bot.send(ev, f'\n余额不足，本次转账需要 {total_amount} 金币，包含 {fee} 金币手续费。\n你当前只有 {gold} 金币' +no, at_sender=True)
         return
     restgold = gold - total_amount
     min_rest = config.min_rest
@@ -1457,7 +1454,7 @@ async def diabo(bot, ev):
         return
     # 4. 判断是否符合领取条件
     if user_info['fish']['🍙'] > 900:
-        await bot.send(ev, "\n这么富，还想骗低保？" + no, at_sender=True)
+        await bot.send(ev, "\n检测到你偷偷藏了鱼饵，这么富还想骗低保？" + no, at_sender=True)
         return
     # 4. 检查背包中是否有鱼
     fish_types = ['🐟', '🦀', '🐠', '🦈', '🦐', '🐡', '🌟']  # 需要检查的鱼类列表
@@ -1476,11 +1473,15 @@ async def diabo(bot, ev):
     daily_diabo_count[today] = daily_diabo_count.get(today, 0) + 1  # 增加每日计数
 
     # 5. 发放低保
-    money.increase_user_money(uid, 'gold', 3000)
-    
-    # 6. 发送消息
-    await bot.send(ev, f"\n已领取今日份低保。\n你现在有{user_gold + 3000}金币" + ok, at_sender=True)
-
+    pet = await get_user_pet(uid)
+    if pet and not pet["runaway"]:
+        money.increase_user_money(uid, 'gold', 6000)
+        await bot.send(ev, f"\n已领取6000金币（含宠物补贴）。\n你现在有{user_gold + 6000}金币" + ok, at_sender=True)
+        return
+    else:
+        money.increase_user_money(uid, 'gold', 3000)
+        await bot.send(ev, f"\n已领取3000金币。\n你现在有{user_gold + 3000}金币" + ok, at_sender=True)
+        return
 
 #增加一个清理过期缓存的函数，定期执行，避免缓存无限增长
 async def clear_expired_cache():

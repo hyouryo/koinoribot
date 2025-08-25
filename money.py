@@ -19,7 +19,7 @@ bg_path = os.path.join(os.path.dirname(__file__),
                        'icelogin/user_background.json')
 config = {  # 初始物资
     "default": {
-        "gold": 2000,  # 金币
+        "gold": 3000,  # 金币
         "luckygold": 0,  # 幸运币
         "starstone": 12500,  # 星星
         "kirastone": 0,  # 羽毛石
