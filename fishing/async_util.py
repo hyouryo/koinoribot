@@ -4,6 +4,7 @@ import os
 import random
 import time
 import base64
+import sqlite3
 from datetime import datetime, timedelta
 import math
 import asyncio
@@ -18,78 +19,112 @@ from hoshino.typing import CQEvent, MessageSegment
 from .. import money
 from hoshino.config import SUPERUSERS
 
-#常用路径
-dbPath = os.path.join(userPath, 'fishing/db')
-user_info_path = os.path.join(dbPath, 'user_info.json')
-
-# 锁防止并发问题
-USER_DATA_LOCK = asyncio.Lock()
-
+# 数据库路径
+db_path = os.path.join(userPath, 'Koinoribot.db')
+#user_info_path = os.path.join(userPath, 'fishing/db/user_info.json')  # 保留用于迁移
 
 default_info = {
     'fish': {'🐟': 0, '🦐': 0, '🦀': 0, '🐡': 0, '🐠': 0, '🔮': 0, '✉': 0, '🍙': 0},
     'statis': {'free': 0, 'sell': 0, 'total_fish': 0, 'frags': 0},
     'rod': {'current': 0, 'total_rod': [0]}
 }
-# --- 辅助函数 ---
-async def load_json_data(filename, default_data):
-    """异步安全地加载JSON数据"""
-    if not os.path.exists(filename):
-        return default_data
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return default_data
 
-async def save_json_data(filename, data):
-    """异步安全地保存JSON数据"""
-    try:
-        temp_filename = filename + ".tmp"
-        with open(temp_filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        os.replace(temp_filename, filename)
-    except IOError as e:
-        print(f"Error saving JSON data to {filename}: {e}")
+# 初始化状态标志
+_db_initialized = False
 
-def with_lock(lock):
-    """自动加锁的装饰器"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapped(*args, **kwargs):
-            async with lock:  # 进入函数前加锁
-                return await func(*args, **kwargs)  # 执行函数
-        return wrapped
-    return decorator
+# --- SQLite数据库操作 ---
+def init_database_sync():
+    """同步初始化数据库和表结构"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     
+    # 创建fishing表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fishing (
+            uid TEXT PRIMARY KEY,
+            fish_data TEXT NOT NULL,
+            statis_data TEXT NOT NULL,
+            rod_data TEXT NOT NULL,
+            updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
 
-@with_lock(USER_DATA_LOCK)
+async def ensure_database_initialized():
+    """确保数据库已初始化（延迟初始化）"""
+    global _db_initialized
+    if not _db_initialized:
+        await asyncio.get_event_loop().run_in_executor(None, init_database_sync)
+        #await asyncio.get_event_loop().run_in_executor(None, migrate_json_to_sqlite_sync)
+        _db_initialized = True
+
+async def get_user_info_from_db(uid):
+    """从数据库获取用户信息"""
+    await ensure_database_initialized()
+    
+    def _query():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT fish_data, statis_data, rod_data FROM fishing WHERE uid = ?', (uid,))
+        result = cursor.fetchone()
+        
+        conn.close()
+        
+        if result:
+            fish_data, statis_data, rod_data = result
+            return {
+                'fish': json.loads(fish_data),
+                'statis': json.loads(statis_data),
+                'rod': json.loads(rod_data)
+            }
+        return None
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _query)
+
+async def save_user_info_to_db(uid, user_info):
+    """保存用户信息到数据库"""
+    await ensure_database_initialized()
+    
+    def _save():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        fish_data = json.dumps(user_info.get('fish', {}))
+        statis_data = json.dumps(user_info.get('statis', {}))
+        rod_data = json.dumps(user_info.get('rod', {}))
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO fishing (uid, fish_data, statis_data, rod_data)
+            VALUES (?, ?, ?, ?)
+        ''', (uid, fish_data, statis_data, rod_data))
+        
+        conn.commit()
+        conn.close()
+    
+    await asyncio.get_event_loop().run_in_executor(None, _save)
+
+# --- 修改后的函数（保持接口不变）---
 async def getUserInfo(uid):
-    """
-        获取用户背包，自带初始化
-    """
+    """获取用户背包，自带初始化"""
     uid = str(uid)
-    total_info = await load_user_data(user_info_path)
-    if uid not in total_info:
-        user_info = default_info
-        total_info[uid] = user_info
-        await save_user_data(user_info_path,total_info)
-    else:
-        user_info = total_info[uid]
+    
+    user_info = await get_user_info_from_db(uid)
+    
+    if not user_info:
+        user_info = default_info.copy()
+        await save_user_info_to_db(uid, user_info)
+    
     return user_info
 
-async def load_user_data(user_path):
-    return await load_json_data(user_path,{})
 
-async def save_user_data(user_path,data):
-    await save_json_data(user_path,data)
-
-@with_lock(USER_DATA_LOCK)
-async def load_to_save_data(user_path,user_info,uid):
+async def load_to_save_data(user_info, uid):
+    """保持原有接口，优化内部实现"""
     try:
-        total_info = await load_user_data(user_path) or {}
-        total_info[uid] = user_info
-        await save_user_data(user_path,total_info)
-    except:
-        print(f"在试图读取和保存钓鱼数据时出现错误")
+        uid = str(uid)
+        await save_user_info_to_db(uid, user_info)
+    except Exception as e:
+        print(f"在试图读取和保存钓鱼数据时出现错误: {e}")
         raise

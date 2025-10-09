@@ -21,7 +21,7 @@ from .._interact import interact, ActSession
 from .evnet_functions import random_event
 from hoshino.typing import CQEvent as Event
 from ..utilize import get_double_mean_money
-from .async_util import user_info_path, USER_DATA_LOCK, load_to_save_data, getUserInfo
+from .async_util import load_to_save_data, getUserInfo
 import os
 import asyncio
 
@@ -170,27 +170,34 @@ async def fishing_show(bot, ev):
 @sv.on_fullmatch('🎣', '钓鱼')
 async def go_fishing(bot, ev):
     uid = ev.user_id
+    auto_buy = 0
+    user_gold = money.get_user_money(uid, 'gold')
     if ev.user_id in BLACKUSERS:
         await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
         return
     user_info = await getUserInfo(uid)
-
     # 冷却检测
     if not freq.check(uid) and not config.DEBUG_MODE:
         await bot.send(ev, random.choice(cool_time_serif) + f'({int(freq.left_time(uid))}s)')
         return
-
+    actual_cost = config.BAIT_PRICE * config.BAIT_NUM
     # 检查鱼饵数量
-    if user_info['fish'].get('🍙', 0) < 10:
-        await bot.send(ev, '需要10个鱼饵喔，要买点鱼饵嘛？(或发送#钓鱼帮助)')
-        return
+    if user_info['fish'].get('🍙', 0) < config.BAIT_NUM:
+        if user_gold >= actual_cost:
+            money.reduce_user_money(uid, 'gold', actual_cost)
+            auto_buy = 1
+            pass
+        else:
+            await bot.send(ev, f'金币或鱼饵不足喔...\n发送 领低保 来获取启动资金吧~')
+            return
 
     # 开始钓鱼
     freq.start_cd(uid)
     #await bot.send(ev, '你开始了钓鱼...')
 
     # 消耗鱼饵
-    await decrease_value(uid, 'fish', '🍙', 10, user_info)
+    if auto_buy == 0:
+        await decrease_value(uid, 'fish', '🍙', config.BAIT_NUM, user_info)
 
     # 执行钓鱼逻辑，传递 user_info
     resp = await fishing(uid, user_info=user_info)
@@ -221,8 +228,8 @@ async def go_fishing(bot, ev):
         msg += '\n(发送选项开头数字ID完成选择~)'
         await bot.send(ev, msg, at_sender=True)
 
-    # 加锁保存用户数据
-    await load_to_save_data(user_info_path,user_info,uid)
+    # 保存用户数据
+    await load_to_save_data(user_info,uid)
 
 ##############################
 def cal_all_fish_value(result):
@@ -401,7 +408,7 @@ async def catch_Loli(bot, ev):
     # 消耗饭团
     await decrease_value(uid, 'fish', '🍙', config.loliprice, user_info)
 
-    await load_to_save_data(user_info_path, user_info, uid)
+    await load_to_save_data( user_info, uid)
     
     # 几率造成miss
     if random.random() < config.miss:  # 生成介于0和1之间的随机数
@@ -497,7 +504,7 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
             auto_buy = 1
             pass
         else:
-            await bot.send(ev, f'{command_name}需要 {cost} 个饭团，您的饭团不足！')
+            await bot.send(ev, f'金币或鱼饵不足喔...\n发送 领低保 来获取启动资金吧~')
             return
     money.reduce_user_money(uid, 'starstone', star_cost)
     # 启动钓鱼冷却
@@ -586,7 +593,7 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
         summary_message += judge["zero_value"]
 
     # 保存用户信息
-    await load_to_save_data(user_info_path,user_info,uid)
+    await load_to_save_data(user_info, uid)
 
     # 发送最终结果
     await bot.send(ev, summary_message, at_sender=True)
@@ -597,7 +604,7 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
 async def ten_fishing(bot, ev):
     await multi_fishing(bot, ev, 10, 95, config.star_price * 10, '十连钓鱼')
 
-@sv.on_fullmatch('百连钓鱼')
+@sv.on_fullmatch('百连钓鱼','ml百连钓鱼')
 async def hundred_fishing(bot, ev):
     await multi_fishing(bot, ev, 100, 900, config.star_price * 100, '百连钓鱼')
 
@@ -689,7 +696,7 @@ async def my_fish(bot, ev):
 #        await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
 #        return
     user_info = await getUserInfo(uid)
-    msg = '背包：\n'
+    msg = '\n背包：\n'
     items = ''
     for i, j in user_info['fish'].items():
         if j == 0:
@@ -752,7 +759,7 @@ async def sell_small_fish(bot, ev):
         result.append(await q_sell_fish(uid, fish, 9999, user_info))
 
     money.increase_user_money(uid, 'gold', get_gold)
-    await load_to_save_data(user_info_path,user_info,uid)
+    await load_to_save_data(user_info,uid)
 
 
     await bot.send(ev, '\n'.join(result), at_sender=True)
@@ -782,7 +789,7 @@ async def sell_all_fish(bot, ev):
         result.append(await all_sell_fish(uid, fish, 99999, user_info))
 
     money.increase_user_money(uid, 'gold', get_gold)
-    await load_to_save_data(user_info_path,user_info,uid)
+    await load_to_save_data(user_info,uid)
 
 
     await bot.send(ev, '\n'.join(result), at_sender=True)

@@ -6,7 +6,7 @@ from . import config
 from .serif import no_fish_serif, get_fish_serif
 from .. import money
 from .._R import userPath
-from .async_util import getUserInfo, load_user_data, save_user_data
+from .async_util import getUserInfo, load_to_save_data
 
 
 dbPath = os.path.join(userPath, 'fishing/db')
@@ -129,13 +129,12 @@ async def sell_fish(uid, fish, num: int = 1):
     :param num: 出售的鱼数量
     :return: 获得的金币数量
     """
-    await getUserInfo(uid)
-    total_info = await load_user_data(user_info_path)
+    user_info = await getUserInfo(uid)  # 直接使用 getUserInfo 获取用户数据
     uid = str(uid)
-    if not total_info[uid]['fish'].get(fish):
+    if not user_info['fish'].get(fish):
         return '数量不够喔'
-    if num > total_info[uid]['fish'].get(fish):
-        num = total_info[uid]['fish'].get(fish)
+    if num > user_info['fish'].get(fish):
+        num = user_info['fish'].get(fish)
     await decrease_value(uid, 'fish', fish, num)
     get_golds = fish_price[fish] * num
     money.increase_user_money(uid, 'gold', get_golds)
@@ -154,24 +153,29 @@ async def free_fish(uid, fish, num: int = 1):
     :param num: 放生的鱼数量
     :return: 水之心碎片数量
     """
-    await getUserInfo(uid)
-    total_info = await load_user_data(user_info_path)
+    user_info = await getUserInfo(uid)  # 直接使用 getUserInfo 获取用户数据
     uid = str(uid)
-    if not total_info[uid]['fish'].get(fish):
+    if not user_info['fish'].get(fish):
         return '数量不足喔'
-    if num > total_info[uid]['fish'].get(fish):
-        num = total_info[uid]['fish'].get(fish)
+    if num > user_info['fish'].get(fish):
+        num = user_info['fish'].get(fish)
     await decrease_value(uid, 'fish', fish, num)
     get_frags = fish_price[fish] * num
-    await increase_value(uid, 'statis', 'frags', get_frags)
-    await increase_value(uid, 'statis', 'free', num)
     user_frags = (await getUserInfo(uid))['statis']['frags']
-    if user_frags >= config.FRAG_TO_CRYSTAL:
-        await increase_value(uid, 'fish', '🔮', int(user_frags / config.FRAG_TO_CRYSTAL))
-        set_value(uid, 'statis', 'frags', user_frags % config.FRAG_TO_CRYSTAL)
-        addition = f'\n一条美人鱼浮出水面！为了表示感谢，TA将{int(user_frags / config.FRAG_TO_CRYSTAL)}颗水之心放入了你的手中~'
+    total_frags = user_frags + get_frags  # 计算总碎片数
+    
+    crystals = 0
+    if total_frags >= config.FRAG_TO_CRYSTAL:
+        crystals = int(total_frags / config.FRAG_TO_CRYSTAL)
+        remaining_frags = total_frags % config.FRAG_TO_CRYSTAL
+        await set_value(uid, 'statis', 'frags', remaining_frags)
+        await increase_value(uid, 'fish', '🔮', crystals)
     else:
-        addition = ''
+        await increase_value(uid, 'statis', 'frags', get_frags)
+    
+    await increase_value(uid, 'statis', 'free', num)
+    
+    addition = f'\n一条美人鱼浮出水面！为了表示感谢，TA将{crystals}颗水之心放入了你的手中~' if crystals > 0 else ''
 
     classifier = '条' if fish in ['🐟', '🐠', '🦈'] else '只'
     return f'{num}{classifier}{fish}成功回到了水里，获得{get_frags}个水心碎片~{addition}'
@@ -196,21 +200,21 @@ async def change_fishrod(uid, mode: int):
     """
         更换鱼竿
     """
+    return
+'''
     user_info = await getUserInfo(uid)
-    total_info = await load_user_data(user_info_path)
     uid = str(uid)
     if mode <= 0 or mode > 3:
         return {'code': -1, 'msg': '没有这种鱼竿...'}
     if (mode - 1) not in user_info['rod']['total_rod']:
         return {'code': -1, 'msg': '还没有拿到这个鱼竿喔'}
-    total_info[uid]['rod']['current'] = mode - 1
+    user_info['rod']['current'] = mode - 1
     await save_user_data(user_info_path, total_info)
     return {'code': 1, 'msg': f'已更换为{mode}号鱼竿~'}
-
+'''
 
 async def compound_bottle(uid, num: int = 1):
     user_info = await getUserInfo(uid)
-    total_info = await load_user_data(user_info_path)
     uid = str(uid)
     if user_info['fish']['🔮'] < config.CRYSTAL_TO_BOTTLE:
         return {'code': -1, 'msg': f'要{config.CRYSTAL_TO_BOTTLE}个🔮才可以合成一个漂流瓶体喔'}
@@ -225,42 +229,54 @@ async def decrease_value(uid, mainclass, subclass, num, user_info=None):
     """
         减少某物品的数量
     """
-    if not user_info:
-        uid = str(uid)
-        await getUserInfo(uid)
-        total_info = await load_user_data(user_info_path)
-    else:
-        if not user_info[mainclass].get(subclass): user_info[mainclass][subclass] = 0
+    uid = str(uid)
+    
+    if user_info:
+        # 如果提供了user_info，直接修改
+        if not user_info[mainclass].get(subclass): 
+            user_info[mainclass][subclass] = 0
         user_info[mainclass][subclass] -= num
+        if user_info[mainclass][subclass] < 0:
+            user_info[mainclass][subclass] = 0
         return
-
-    if not total_info[uid][mainclass].get(subclass): total_info[uid][mainclass][subclass] = 0
-    total_info[uid][mainclass][subclass] -= num
-    if total_info[uid][mainclass][subclass] < 0:
-        total_info[uid][mainclass][subclass] = 0
-    if not user_info:
-        await save_user_data(user_info_path, total_info)
+    else:
+        # 如果没有提供user_info，从数据库获取并更新
+        user_info = await getUserInfo(uid)
+        
+        if not user_info[mainclass].get(subclass): 
+            user_info[mainclass][subclass] = 0
+        user_info[mainclass][subclass] -= num
+        if user_info[mainclass][subclass] < 0:
+            user_info[mainclass][subclass] = 0
+        
+        # 保存到数据库
+        await load_to_save_data(user_info, uid)
 
 
 async def increase_value(uid, mainclass, subclass, num, user_info=None):
     """
         增加某物品的数量
     """
-    if not user_info:
-        uid = str(uid)
-        await getUserInfo(uid)
-        total_info = await load_user_data(user_info_path)
-    else:
-        if not user_info[mainclass].get(subclass): user_info[mainclass][subclass] = 0
+    uid = str(uid)
+    
+    if user_info:
+        # 如果提供了user_info，直接修改
+        if not user_info[mainclass].get(subclass): 
+            user_info[mainclass][subclass] = 0
         user_info[mainclass][subclass] += num
         return
+    else:
+        # 如果没有提供user_info，从数据库获取并更新
+        user_info = await getUserInfo(uid)
+        
+        if not user_info[mainclass].get(subclass): 
+            user_info[mainclass][subclass] = 0
+        user_info[mainclass][subclass] += num
+        
+        # 保存到数据库
+        await load_to_save_data(user_info, uid)
 
-    if not total_info[uid][mainclass].get(subclass): total_info[uid][mainclass][subclass] = 0
-    total_info[uid][mainclass][subclass] += num
-    if not user_info:
-        await save_user_data(user_info_path, total_info)
-
-
+'''
 async def set_value(uid, mainclass, subclass, num):
     """
         直接设置物品数量
@@ -268,10 +284,10 @@ async def set_value(uid, mainclass, subclass, num):
     uid = str(uid)
     await getUserInfo(uid)
     total_info = await load_user_data(user_info_path)
-    if not total_info[uid][mainclass].get(subclass): total_info[uid][mainclass][subclass] = 0
-    total_info[uid][mainclass][subclass] = num
+    if not user_info[mainclass].get(subclass): user_info[mainclass][subclass] = 0
+    user_info[mainclass][subclass] = num
     await save_user_data(user_info_path, total_info)
-
+'''
 
 if __name__ == '__main__':
     pass
