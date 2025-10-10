@@ -4,6 +4,7 @@ import os
 import random
 import time
 import base64
+import sqlite3
 from datetime import datetime, timedelta
 import math
 import asyncio
@@ -11,103 +12,231 @@ import io
 from .._R import get, userPath
 from .petconfig import GACHA_COST, GACHA_REWARDS, GACHA_CONSOLE_PRIZE, BASE_PETS, EVOLUTIONS, growth1, growth2, growth3, PET_SHOP_ITEMS, STATUS_DESCRIPTIONS
 
-PET_DATA_DIR = os.path.join(userPath, 'chongwu')
-USER_PET_DATABASE = os.path.join(PET_DATA_DIR, 'user_pets.json')
-USER_ITEMS_DATABASE = os.path.join(PET_DATA_DIR, 'user_items.json')
+# 数据库路径（使用与钓鱼系统相同的数据库）
+db_path = os.path.join(userPath, 'Koinoribot.db')
 
-# 锁防止并发问题
-user_pet_lock = asyncio.Lock()
-user_items_lock = asyncio.Lock()
+# 初始化状态标志
+_db_initialized = False
 
-# 初始化数据目录
-os.makedirs(PET_DATA_DIR, exist_ok=True)
+# --- SQLite数据库操作 ---
+def init_pet_database_sync():
+    """同步初始化宠物数据库和表结构"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # 创建user_pets表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_pets (
+            uid TEXT PRIMARY KEY,
+            pet_data TEXT NOT NULL,
+            updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 创建user_items表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_items (
+            uid TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 0,
+            updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (uid, item_name)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
 
-# --- 辅助函数 ---
-async def load_json_data(filename, default_data, lock):
-    """异步安全地加载JSON数据"""
-    async with lock:
-        if not os.path.exists(filename):
-            return default_data
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return default_data
 
-async def save_json_data(filename, data, lock):
-    """异步安全地保存JSON数据"""
-    async with lock:
-        try:
-            temp_filename = filename + ".tmp"
-            with open(temp_filename, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            os.replace(temp_filename, filename)
-        except IOError as e:
-            print(f"Error saving JSON data to {filename}: {e}")
+
+async def ensure_pet_database_initialized():
+    """确保宠物数据库已初始化（延迟初始化）"""
+    global _db_initialized
+    if not _db_initialized:
+        await asyncio.get_event_loop().run_in_executor(None, init_pet_database_sync)
+        _db_initialized = True
+
+# --- 宠物数据操作 ---
+async def get_user_pets():
+    """获取所有用户的宠物数据"""
+    await ensure_pet_database_initialized()
+    
+    def _query():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT uid, pet_data FROM user_pets')
+        results = cursor.fetchall()
+        
+        user_pets = {}
+        for uid, pet_data_json in results:
+            if pet_data_json:
+                user_pets[uid] = json.loads(pet_data_json)
+        
+        conn.close()
+        return user_pets
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _query)
+
+
+async def get_user_pet(user_id):
+    """获取单个用户的宠物"""
+    await ensure_pet_database_initialized()
+    
+    def _query():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT pet_data FROM user_pets WHERE uid = ?', (str(user_id),))
+        result = cursor.fetchone()
+        
+        conn.close()
+        
+        if result and result[0]:
+            return json.loads(result[0])
+        return None
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _query)
+
+async def update_user_pet(user_id, pet_data):
+    """更新用户的宠物数据"""
+    await ensure_pet_database_initialized()
+    
+    def _update():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO user_pets (uid, pet_data)
+            VALUES (?, ?)
+        ''', (str(user_id), json.dumps(pet_data, ensure_ascii=False)))
+        
+        conn.commit()
+        conn.close()
+    
+    await asyncio.get_event_loop().run_in_executor(None, _update)
+
+async def remove_user_pet(user_id):
+    """移除用户的宠物"""
+    await ensure_pet_database_initialized()
+    
+    def _remove():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM user_pets WHERE uid = ?', (str(user_id),))
+        affected = cursor.rowcount
+        
+        conn.commit()
+        conn.close()
+        return affected > 0
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _remove)
+
+# --- 物品数据操作 ---
+async def get_user_items():
+    """获取用户的所有物品数据"""
+    await ensure_pet_database_initialized()
+    
+    def _query():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT uid, items_data FROM user_items')
+        results = cursor.fetchall()
+        
+        user_items = {}
+        for uid, items_data_json in results:
+            if items_data_json:
+                user_items[uid] = json.loads(items_data_json)
+        
+        conn.close()
+        return user_items
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _query)
+
+
+async def add_user_item(user_id, item_name, quantity=1):
+    """给用户添加物品"""
+    await ensure_pet_database_initialized()
+    
+    def _add():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 获取当前物品数据
+        cursor.execute('SELECT items_data FROM user_items WHERE uid = ?', (str(user_id),))
+        result = cursor.fetchone()
+        
+        if result and result[0]:
+            items_data = json.loads(result[0])
+        else:
+            items_data = {}
+        
+        # 更新物品数量
+        current_quantity = items_data.get(item_name, 0)
+        items_data[item_name] = current_quantity + quantity
+        
+        # 保存回数据库
+        cursor.execute('''
+            INSERT OR REPLACE INTO user_items (uid, items_data)
+            VALUES (?, ?)
+        ''', (str(user_id), json.dumps(items_data, ensure_ascii=False)))
+        
+        conn.commit()
+        conn.close()
+    
+    await asyncio.get_event_loop().run_in_executor(None, _add)
+
+async def use_user_item(user_id, item_name, quantity=1):
+    """使用用户物品"""
+    await ensure_pet_database_initialized()
+    
+    def _use():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 获取当前物品数据
+        cursor.execute('SELECT items_data FROM user_items WHERE uid = ?', (str(user_id),))
+        result = cursor.fetchone()
+        
+        if not result or not result[0]:
+            conn.close()
+            return False
+        
+        items_data = json.loads(result[0])
+        current_quantity = items_data.get(item_name, 0)
+        
+        if current_quantity < quantity:
+            conn.close()
+            return False
+        
+        # 更新物品数量
+        new_quantity = current_quantity - quantity
+        if new_quantity <= 0:
+            # 数量为0时删除该物品
+            del items_data[item_name]
+        else:
+            items_data[item_name] = new_quantity
+        
+        # 保存回数据库
+        cursor.execute('''
+            INSERT OR REPLACE INTO user_items (uid, items_data)
+            VALUES (?, ?)
+        ''', (str(user_id), json.dumps(items_data, ensure_ascii=False)))
+        
+        conn.commit()
+        conn.close()
+        return True
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _use)
+
 
 async def get_pet_data():
     """获取宠物基础数据"""
     return BASE_PETS
 
-async def get_user_pets():
-    """获取所有用户的宠物数据"""
-    return await load_json_data(USER_PET_DATABASE, {}, user_pet_lock)
 
-async def save_user_pets(data):
-    """保存所有用户的宠物数据"""
-    await save_json_data(USER_PET_DATABASE, data, user_pet_lock)
-
-async def get_user_items():
-    """获取所有用户的物品数据"""
-    return await load_json_data(USER_ITEMS_DATABASE, {}, user_items_lock)
-
-async def save_user_items(data):
-    """保存所有用户的物品数据"""
-    await save_json_data(USER_ITEMS_DATABASE, data, user_items_lock)
-
-async def get_user_pet(user_id):
-    """获取单个用户的宠物"""
-    user_pets = await get_user_pets()
-    return user_pets.get(str(user_id), None)
-
-async def update_user_pet(user_id, pet_data):
-    """更新用户的宠物数据"""
-    user_pets = await get_user_pets()
-    user_pets[str(user_id)] = pet_data
-    await save_user_pets(user_pets)
-
-async def remove_user_pet(user_id):
-    """移除用户的宠物"""
-    user_pets = await get_user_pets()
-    if str(user_id) in user_pets:
-        del user_pets[str(user_id)]
-        await save_user_pets(user_pets)
-        return True
-    return False
-
-async def get_user_item_count(user_id, item_name):
-    """获取用户拥有的特定物品数量"""
-    user_items = await get_user_items()
-    return user_items.get(str(user_id), {}).get(item_name, 0)
-
-async def add_user_item(user_id, item_name, quantity=1):
-    """给用户添加物品"""
-    user_items = await get_user_items()
-    if str(user_id) not in user_items:
-        user_items[str(user_id)] = {}
-    user_items[str(user_id)][item_name] = user_items[str(user_id)].get(item_name, 0) + quantity
-    await save_user_items(user_items)
-
-async def use_user_item(user_id, item_name, quantity=1):
-    """使用用户物品"""
-    user_items = await get_user_items()
-    if str(user_id) not in user_items or user_items[str(user_id)].get(item_name, 0) < quantity:
-        return False
-    user_items[str(user_id)][item_name] -= quantity
-    if user_items[str(user_id)][item_name] <= 0:
-        del user_items[str(user_id)][item_name]
-    await save_user_items(user_items)
-    return True
 
 async def get_status_description(stat_name, value):
     """获取状态描述"""

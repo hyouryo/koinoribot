@@ -3,6 +3,7 @@ import os
 import random
 import time
 import base64
+import gc
 from datetime import datetime, timedelta, date
 import math
 import asyncio # 用于文件锁
@@ -19,229 +20,38 @@ from ..chongwu.pet import get_user_pet
 from collections import defaultdict
 sv = Service('stock_market', manage_priv=priv.ADMIN, enable_on_default=True)
 from hoshino.config import SUPERUSERS
+from .stock_utils import STOCKS, MARKET_EVENTS, MANUAL_EVENT_TYPES, get_stock_data, save_stock_data, get_user_portfolios, save_user_portfolios, get_user_portfolio, update_user_portfolio, get_current_stock_price, get_stock_price_history, delete_user_all_accounts, HISTORY_DURATION_HOURS
 no = get('emotion/no.png').cqcode
 ok = get('emotion/ok.png').cqcode
 
-STOCKS_FILE = os.path.join(userPath, 'chaogu/stock_data.json')
-PORTFOLIOS_FILE = os.path.join(userPath, 'chaogu/user_portfolios.json')
-HISTORY_DURATION_HOURS = 24 # 只保留过去24小时数据
+def load_json_data(filename, default_data, lock):
+    """加载JSON数据"""
+    if not os.path.exists(filename):
+        return default_data
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        # 文件损坏或读取错误，返回默认值
+        return default_data
 
-# 锁，防止并发读写JSON文件导致数据损坏
-stock_file_lock = asyncio.Lock()
-portfolio_file_lock = asyncio.Lock()
+def save_json_data(filename, data, lock):
+    """保存JSON数据"""
+    try:
+        # 确保目录存在
+        os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
+        # 使用临时文件和原子移动来增加保存的安全性
+        temp_filename = filename + ".tmp"
+        with open(temp_filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        os.replace(temp_filename, filename) # 原子操作替换
+    except IOError as e:
+        print(f"Error saving JSON data to {filename}: {e}")
 
-# 股票定义 (名称: 初始价格)——————新增或修改股票后，需要对bot发送“修复股票数据”进行初始化
-STOCKS = {
-    "萝莉股": 50.0,
-    "猫娘股": 60.0,
-    "魔法少女股": 70.0,
-    "梦月股": 250.0,
-    "梦馨股": 100.0,
-    "高达股": 40.0,
-    "雾月股": 120.0,
-    "傲娇股": 60.0,
-    "病娇股": 30.0,
-    "梦灵股": 120.0,
-    "铃音股": 110.0,
-    "音祈股": 500.0,
-    "梦铃股": 250.0,
-    "姐妹股": 250.0,
-    "橘馨股": 250.0,
-    "白芷股": 250.0,
-    "雾织股": 250.0,
-    "筑梦股": 250.0,
-    "摇篮股": 250.0,
-    "筑梦摇篮股": 500.0,
-}
-
-# --- 辅助函数：读写JSON ---
-
-async def load_json_data(filename, default_data, lock):
-    """异步安全地加载JSON数据"""
-    async with lock:
-        if not os.path.exists(filename):
-            return default_data
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            # 文件损坏或读取错误，返回默认值
-            return default_data
-
-async def save_json_data(filename, data, lock):
-    """异步安全地保存JSON数据"""
-    async with lock:
-        try:
-            # 确保目录存在
-            os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
-            # 使用临时文件和原子移动来增加保存的安全性
-            temp_filename = filename + ".tmp"
-            with open(temp_filename, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            os.replace(temp_filename, filename) # 原子操作替换
-        except IOError as e:
-            print(f"Error saving JSON data to {filename}: {e}")
-            # Consider logging the error more formally in a real application
-            # pass # Or raise the exception if needed
-
-
-
-
-# 市场事件定义 (类型: {描述, 影响范围, 影响函数})
-MARKET_EVENTS = {
-    "利好": {
-        "templates": [
-            "{stock}获得新的市场投资！",
-            "{stock}获得异次元政府补贴！",
-            "{stock}季度财报超预期！"
-        ],
-        "scope": "single",  # 影响单只股票
-        "effect": lambda price: price * random.uniform(1.10, 1.20)  # 小幅上涨
-    },
-    "利空": {
-        "templates": [
-            "{stock}产品力下降！",
-            "{stock}产品发现严重缺陷！",
-            "{stock}高管突然离职！"
-        ],
-        "scope": "single",
-        "effect": lambda price: price * random.uniform(0.82, 0.90)  # 小幅下跌
-    },
-    "大盘上涨": {
-        "templates": [
-            "鹰酱宣布降息，市场普涨！",
-            "异次元经济复苏，投资者信心增强！",
-            "魔法少女在战争中大捷，领涨大盘！"
-        ],
-        "scope": "all",  # 影响所有股票
-        "effect": lambda price: price * random.uniform(1.10, 1.15)  # 全体上涨
-    },
-    "大盘下跌": {
-        "templates": [
-            "异次元国际局势紧张，市场恐慌！",
-            "经济数据不及预期，市场普跌！",
-            "机构投资者大规模抛售！"
-        ],
-        "scope": "all",
-        "effect": lambda price: price * random.uniform(0.87, 0.90)  # 全体下跌
-    },
-    "暴涨": {
-        "templates": [
-            "{stock}成为市场新宠，资金疯狂涌入！",
-            "{stock}发现新资源，价值重估！"
-        ],
-        "scope": "single",
-        "effect": lambda price: price * random.uniform(1.25, 1.40)  # 大幅上涨
-    },
-    "暴跌": {
-        "templates": [
-            "{stock}被曝财务造假！",
-            "{stock}主要产品被禁售！"
-        ],
-        "scope": "single",
-        "effect": lambda price: price * random.uniform(0.63, 0.75)  # 大幅下跌
-    }
-}
-
-# 在 MARKET_EVENTS 定义后添加
-MANUAL_EVENT_TYPES = {
-    "利好": "单股上涨",
-    "利空": "单股下跌", 
-    "暴涨": "单股暴涨",
-    "暴跌": "单股暴跌",
-    "大盘上涨": "全局上涨",
-    "大盘下跌": "全局下跌"
-}
 
 # 事件触发概率配置
-EVENT_PROBABILITY = 0.99  # 每次价格更新时有99%概率触发事件
-EVENT_COOLDOWN = 3500  # 事件冷却时间2小时(秒)
-
-# --- 辅助函数：获取和更新数据 ---
-async def get_stock_data():
-    """获取所有股票数据"""
-    default = {
-        name: {"initial_price": price, "history": []}
-        for name, price in STOCKS.items()
-    }
-    return await load_json_data(STOCKS_FILE, default, stock_file_lock)
-
-async def save_stock_data(data):
-    """保存所有股票数据"""
-    await save_json_data(STOCKS_FILE, data, stock_file_lock)
-
-async def get_user_portfolios():
-    """获取所有用户持仓"""
-    return await load_json_data(PORTFOLIOS_FILE, {}, portfolio_file_lock)
-
-async def save_user_portfolios(data):
-    """保存所有用户持仓"""
-    await save_json_data(PORTFOLIOS_FILE, data, portfolio_file_lock)
-
-async def get_current_stock_price(stock_name, stock_data=None):
-    """获取指定股票的当前价格"""
-    if stock_data is None:
-        stock_data = await get_stock_data()
-    
-    if stock_name not in stock_data or not stock_data[stock_name]["history"]:
-        # 如果没有历史记录，返回初始价格
-        return stock_data.get(stock_name, {}).get("initial_price")
-    
-    # 返回最新价格
-    return stock_data[stock_name]["history"][-1][1] # history is [(timestamp, price), ...]
-
-async def get_stock_price_history(stock_name, stock_data=None):
-    """获取指定股票过去24小时的价格历史"""
-    if stock_data is None:
-        stock_data = await get_stock_data()
-    
-    if stock_name not in stock_data:
-        return []
-        
-    cutoff_time = time.time() - HISTORY_DURATION_HOURS * 3600
-    history = stock_data[stock_name].get("history", [])
-    
-    # 筛选出24小时内的数据
-    recent_history = [(ts, price) for ts, price in history if ts >= cutoff_time]
-    return recent_history
-
-async def get_user_portfolio(user_id):
-    """获取单个用户的持仓"""
-    portfolios = await get_user_portfolios()
-    return portfolios.get(str(user_id), {}) # user_id 转为字符串以匹配JSON键
-
-async def update_user_portfolio(user_id, stock_name, change_amount):
-    """更新用户持仓 (正数为买入，负数为卖出)"""
-    portfolios = await get_user_portfolios()
-    user_id_str = str(user_id)
-    
-    if user_id_str not in portfolios:
-        portfolios[user_id_str] = {}
-        
-    current_amount = portfolios[user_id_str].get(stock_name, 0)
-    new_amount = current_amount + change_amount
-    
-    if new_amount < 0:
-        # This should ideally be checked before calling update_user_portfolio
-        print(f"Error: Attempted to make stock {stock_name} amount negative for user {user_id}")
-        return False # Indicate failure
-
-    if new_amount == 0:
-        # 如果数量归零，从持仓中移除该股票
-        if stock_name in portfolios[user_id_str]:
-            del portfolios[user_id_str][stock_name]
-        # 如果用户不再持有任何股票，可以考虑移除该用户条目（可选）
-        # if not portfolios[user_id_str]:
-        #     del portfolios[user_id_str]
-    else:
-        portfolios[user_id_str][stock_name] = new_amount
-        
-    await save_user_portfolios(portfolios)
-    return True # Indicate success
-
-
-
-
+EVENT_PROBABILITY = 0.9999  # 每次价格更新时有99%概率触发事件
+EVENT_COOLDOWN = 3500  # 事件冷却时间(秒)
 
 @sv.scheduled_job('cron', hour='*', minute='0') # 每小时的0分执行
 # async def update_all_stock_prices(): # 函数名用 update_all_stock_prices 更清晰
@@ -419,94 +229,113 @@ async def initialize_stock_market():
 
 
 def generate_stock_chart(stock_name, history, stock_data=None):
-    """使用 Plotly 生成股票历史价格图表的 PNG 图片"""
+    """
+    使用 Plotly 生成股票历史价格图表的 PNG 图片。
+    此函数经过内存管理优化，应在线程池中运行。
+    """
     if not history:
         return None
 
-    timestamps, prices = zip(*history)
-    dates = [datetime.fromtimestamp(ts) for ts in timestamps]
-
-    # 计算时间范围（过去24小时，并延长1小时）
-    now = datetime.now()
-    start_time = now - timedelta(hours=HISTORY_DURATION_HOURS)
-    end_time = now + timedelta(hours=3)  # 延长2小时
-    
-    # 创建 Plotly Figure
-    fig = go.Figure()
-
-    # 添加价格折线图
-    fig.add_trace(go.Scatter(
-        x=dates,
-        y=prices,
-        mode='lines+markers',
-        marker=dict(size=4),
-        line=dict(shape='linear'),
-        name='价格'
-    ))
-
-    # 如果有事件，在图表上标记
-    if stock_data and stock_name in stock_data and "events" in stock_data[stock_name]:
-        for event in stock_data[stock_name]["events"]:
-            event_time = datetime.fromtimestamp(event["time"])
-            # 只显示过去24小时内的事件
-            if event_time >= start_time:
-                fig.add_vline(
-                    x=event_time,
-                    line_width=1,
-                    line_dash="dash",
-                    line_color="orange",
-                    opacity=0.7
-                )
-                # 添加事件注释
-                fig.add_annotation(
-                    x=event_time,
-                    y=event["old_price"],
-                    text=event["type"],
-                    showarrow=True,
-                    arrowhead=1,
-                    ax=0,
-                    ay=-40
-                )
-
-    current_price = history[-1][1]
-    initial_price = STOCKS.get(stock_name, 0)
-
-    # 更新图表布局
-    fig.update_layout(
-        title=f'{stock_name} 过去{HISTORY_DURATION_HOURS}小时价格走势 (初始价格: {initial_price:.2f}金币 最高上涨至初始价格的2倍)',
-        xaxis_title='时间',
-        yaxis_title='价格 (金币)',
-        xaxis=dict(
-            tickformat='%H:%M',
-            range=[start_time, end_time]  # 设置X轴范围为过去24小时+1小时
-        ),
-        hovermode='x unified',
-        template='plotly_white',
-        margin=dict(l=50, r=50, t=80, b=50)
-    )
-    
-    # 调整当前价格标注的位置
-    fig.add_annotation(
-        x=dates[-1],
-        y=current_price,
-        xref="x",
-        yref="y",
-        text=f'当前: {current_price:.2f}',
-        showarrow=True,
-        arrowhead=1,
-        ax=30,  # 减小箭头长度
-        ay=-30,
-        xanchor='left'  # 确保文本向左对齐
-    )
+    # 定义所有可能产生的大型局部变量
+    fig = None
+    timestamps = prices = dates = img_bytes = buf = None
 
     try:
+        timestamps, prices = zip(*history)
+        dates = [datetime.fromtimestamp(ts) for ts in timestamps]
+
+        # 计算时间范围（过去24小时，并延长）
+        now = datetime.now()
+        start_time = now - timedelta(hours=HISTORY_DURATION_HOURS)
+        end_time = now + timedelta(hours=3)
+
+        # 创建 Plotly Figure
+        fig = go.Figure()
+
+        # 添加价格折线图
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=prices,
+            mode='lines+markers',
+            marker=dict(size=4),
+            line=dict(shape='linear'),
+            name='价格'
+        ))
+
+        # 如果有事件，在图表上标记
+        if stock_data and stock_name in stock_data and "events" in stock_data[stock_name]:
+            for event in stock_data[stock_name]["events"]:
+                event_time = datetime.fromtimestamp(event["time"])
+                # 只显示指定时间范围内的事件
+                if event_time >= start_time:
+                    fig.add_vline(
+                        x=event_time,
+                        line_width=1,
+                        line_dash="dash",
+                        line_color="orange",
+                        opacity=0.7
+                    )
+                    fig.add_annotation(
+                        x=event_time,
+                        y=event["old_price"],
+                        text=event["type"],
+                        showarrow=True,
+                        arrowhead=1,
+                        ax=0,
+                        ay=-40
+                    )
+
+        current_price = history[-1][1]
+        # 确保 STOCKS 是可访问的，或者通过参数传入
+        initial_price = STOCKS.get(stock_name, 0)
+
+        # 更新图表布局
+        fig.update_layout(
+            title=f'{stock_name} 过去{HISTORY_DURATION_HOURS}小时价格走势 (初始价格: {initial_price:.2f}金币 最高上涨至初始价格的2倍)',
+            xaxis_title='时间',
+            yaxis_title='价格 (金币)',
+            xaxis=dict(
+                tickformat='%H:%M',
+                range=[start_time, end_time]
+            ),
+            hovermode='x unified',
+            template='plotly_white',
+            margin=dict(l=50, r=50, t=80, b=50)
+        )
+        
+        # 添加当前价格标注
+        fig.add_annotation(
+            x=dates[-1],
+            y=current_price,
+            xref="x",
+            yref="y",
+            text=f'当前: {current_price:.2f}',
+            showarrow=True,
+            arrowhead=1,
+            ax=30,
+            ay=-30,
+            xanchor='left'
+        )
+
+        # 渲染图片
         img_bytes = pio.to_image(fig, format='png', scale=2)
         buf = io.BytesIO(img_bytes)
         buf.seek(0)
         return buf
+
     except Exception as e:
         print(f"Error generating Plotly chart image for {stock_name}: {e}")
         return None
+    finally:
+        if fig:
+            # 清空Figure对象内部数据，帮助GC回收
+            fig.data = []
+            fig.layout = {}
+            fig.frames = []
+            del fig
+        
+
+        del timestamps, prices, dates, img_bytes
 
 
 # --- 命令处理函数 ---
@@ -520,22 +349,35 @@ async def handle_stock_quote(bot, ev):
         await bot.send(ev, f'未知股票: {stock_name}。可用的股票有: {", ".join(STOCKS.keys())}')
         return
 
-    stock_data = await get_stock_data()
-    history = await get_stock_price_history(stock_name, stock_data)
-    
-    if not history:
-        initial_price = stock_data[stock_name]["initial_price"]
-        await bot.send(ev, f'{stock_name} 暂时还没有价格历史记录。初始价格为 {initial_price:.2f} 金币。')
-        return
+    chart_buf = b64_str = cq_code = None
+    try:
+        stock_data = await get_stock_data()
+        history = await get_stock_price_history(stock_name, stock_data)
+        
+        if not history:
+            initial_price = stock_data[stock_name]["initial_price"]
+            await bot.send(ev, f'{stock_name} 暂时还没有价格历史记录。初始价格为 {initial_price:.2f} 金币。')
+            return
 
-    chart_buf = generate_stock_chart(stock_name, history, stock_data)
-    
-    if chart_buf:
-        image_bytes = chart_buf.getvalue()
-        b64_str = base64.b64encode(image_bytes).decode()
-        cq_code = f"[CQ:image,file=base64://{b64_str}]"
-        await bot.send(ev, cq_code)
-        chart_buf.close()
+        loop = asyncio.get_running_loop()
+        chart_buf = await loop.run_in_executor(
+            None, generate_stock_chart, stock_name, history, stock_data
+        )
+        
+        if chart_buf:
+            image_bytes = chart_buf.getvalue()
+            b64_str = base64.b64encode(image_bytes).decode()
+            cq_code = f"[CQ:image,file=base64://{b64_str}]"
+            await bot.send(ev, cq_code)
+
+    except Exception as e:
+        print(f"Error in handle_stock_quote: {e}")
+        await bot.send(ev, "生成图表时发生内部错误，请联系管理员。")
+    finally:
+        if chart_buf:
+            chart_buf.close() # 关闭IO流
+        del chart_buf, b64_str, cq_code
+        gc.collect()
 
 @sv.on_rex(r'^买入\s*(.+股)\s*(\d+)$')
 async def handle_buy_stock(bot, ev):
@@ -1045,13 +887,15 @@ gambling_sessions = {}
 # 每日限制文件锁
 gamble_limit_lock = asyncio.Lock()
 
+
+
 async def load_gamble_limits():
     """加载每日赌博限制数据"""
-    return await load_json_data(GAMBLE_LIMITS_FILE, {}, gamble_limit_lock)
+    return load_json_data(GAMBLE_LIMITS_FILE, {}, gamble_limit_lock)
 
 async def save_gamble_limits(data):
     """保存每日赌博限制数据"""
-    await save_json_data(GAMBLE_LIMITS_FILE, data, gamble_limit_lock)
+    save_json_data(GAMBLE_LIMITS_FILE, data, gamble_limit_lock)
 
 async def check_daily_gamble_limit(user_id):
     """检查用户今天是否已经赌过"""
@@ -1073,6 +917,8 @@ async def record_gamble_today(user_id):
 
 def get_gamble_win_probability(gold, uid):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
+    if uid in SUPERUSERS:
+        return 0.99
     if gold < 10000:
         return 0.90
     elif gold < 50000:
@@ -1385,117 +1231,217 @@ async def admin_reduce_money(bot, ev):
     await bot.send(ev, f'已从 {target_uid} 扣款 {deduct_amount} 金币', at_sender=True)
     return
 
+
+
+#################################################################
+'''
+# 每日转盘次数限制文件的路径
+LUCKY_TURNTABLE_LIMITS_FILE = os.path.join(userPath, 'chaogu/lucky_turntable_limits.json')
+MAX_TURNS_PER_DAY = 5
+
+# 1. 修改后的奖品概率配置
+PRIZE_CONFIG = {
+    '普通': {'weight': 70},
+    '稀有': {'weight': 20},
+    '史诗': {'weight': 8},
+    '传说': {'weight': 2},
+}
+
+TIERS = list(PRIZE_CONFIG.keys())
+WEIGHTS = [details['weight'] for details in PRIZE_CONFIG.values()]
+
+# --- 数据持久化管理 ---
+limit_file_lock = asyncio.Lock()
+async def ensure_file_exists(path):
+    """确保JSON文件和其所在目录存在"""
+    dir_name = os.path.dirname(path)
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+    if not os.path.exists(path):
+        async with limit_file_lock:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump({}, f)
+
+async def load_turntable_limits():
+    """异步加载每日转盘次数限制数据"""
+    await ensure_file_exists(LUCKY_TURNTABLE_LIMITS_FILE)
+    async with limit_file_lock:
+        with open(LUCKY_TURNTABLE_LIMITS_FILE, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
+
+async def save_turntable_limits(data):
+    """异步保存每日转盘次数限制数据"""
+    async with limit_file_lock:
+        with open(LUCKY_TURNTABLE_LIMITS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+# --- 核心游戏逻辑 ---
+def draw_prize(prize_range):
+    """根据权重随机抽取一个奖品档位"""
+    return random.choices(TIERS, weights=WEIGHTS, k=1)[0]
+
+def prize(bot, ev, prize_tier):
+    uid = ev.user_id
+    prizes = ["gold", "starstone", "luckygold", "logindays", "pet", "stock"
+    prize = random.choice(prizes)
+    if prize_tier == '普通':
+        
+    if prize_tier == '稀有':
+        
+    if prize_tier == '史诗':
+        
+    if prize_tier == '传说':
+        
+        
+        
+@sv.on_fullmatch('幸运大转盘', '幸运转盘')
+async def lucky_turntable_game(bot, ev):
+    """处理幸运大转盘游戏逻辑"""
+    user_id = ev.user_id
+    today_str = date.today().isoformat()
+
+    #检查和更新用户每日转盘次数
+    limits_data = await load_turntable_limits()
+    user_data = limits_data.get(user_id, {})
+    last_turn_date = user_data.get('date', '')
+    turns_today = user_data.get('count', 0)
+    if last_turn_date != today_str:
+        turns_today = 0
+    if turns_today >= MAX_TURNS_PER_DAY:
+        await bot.send(ev, f"您今天的 {MAX_TURNS_PER_DAY} 次机会已经用完啦，明天再来吧！", at_sender=True)
+        return
+    lucky_coins = money.get_user_money(user_id, 'luckygold') 
+    if lucky_coins < 1:
+        await bot.send(ev, "\n您的幸运币不足，无法启动转盘哦。", at_sender=True)
+        return
+
+    money.reduce_user_money(user_id, 'luckygold', 1)
+    limits_data[user_id] = {'date': today_str, 'count': turns_today + 1}
+    await save_turntable_limits(limits_data)
+    remaining_turns = MAX_TURNS_PER_DAY - (turns_today + 1)
+
+    await bot.send(ev, "\n幸运币已投入，大转盘正在飞速旋转...", at_sender=True)
+    await asyncio.sleep(1)
+
+    # 抽取奖品档位
+    prize_tier = draw_prize()
+    
+    prize_description = prize(bot, ev, prize_tier)
+
+    # 3. 构造并发送最终的中奖消息
+    result_message = f"\n恭喜！指针停在了【{prize_tier}】区域！\n"
+    result_message += f"您获得了：{prize_description}\n\n"
+    result_message += f"您今天还剩下 {remaining_turns} 次机会。"
+
+    await bot.send(ev, result_message, at_sender=True)
+'''
 ##################################################################################################################
 # 4. 每日低保领取
-last_diabo_time = {}  # {user_id: datetime}
+PREK_LIMITS_FILE = os.path.join(userPath, 'chaogu/daily_prek.json')
 
-# 全局变量，用于存储每日已发放的低保数量
-daily_diabo_count = {}  # {date: count}
+def load_daily_limits():
+    """
+    加载每日低保记录文件。
+    如果文件或目录不存在，则创建它。
+    如果文件为空或损坏，则返回一个空的字典。
+    """
+    try:
+        # 确保目录存在
+        os.makedirs(os.path.dirname(PREK_LIMITS_FILE), exist_ok=True)
+        # 尝试读取文件
+        with open(PREK_LIMITS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
-
-# 每天凌晨重置每日低保计数的函数
-async def reset_daily_diabo_count():
-    while True:
-        now = datetime.now()
-        tomorrow = datetime.combine(now.date() + timedelta(days=1), datetime.min.time())
-        wait_seconds = (tomorrow - now).total_seconds()
-        await asyncio.sleep(wait_seconds)  # 等待到凌晨
-        daily_diabo_count.clear()  # 清空每日计数
-        print("每日低保计数已重置")
-
-
-# 启动定时任务 (假设 sv 是一个支持注册定时任务的对象)
-# 在程序启动时，你需要调用 sv.on_startup(reset_daily_diabo_count()) 来启动这个定时任务
-# 例如:
-# sv.on_startup(reset_daily_diabo_count())
-
+def save_daily_limits(data):
+    """将低保记录写入JSON文件"""
+    with open(PREK_LIMITS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 
 # 领取低保的命令处理函数
 @sv.on_fullmatch("领低保")
 async def diabo(bot, ev):
-    uid = ev.user_id
-    now = datetime.now()
-    today = now.date()
-    
-    
+    uid = str(ev.user_id) # 建议将uid转为字符串，避免JSON的key为整数时产生问题
+    today_str = datetime.now().strftime('%Y-%m-%d') # 获取 "xxxx-xx-xx" 格式的今天日期
+
     if config.dibao == 0:
         await bot.send(ev, "\n低保功能维护中，请稍候再试。" + no, at_sender=True)
         return
 
-    # 1. 检查每日低保数量限制
-    if daily_diabo_count.get(today, 0) >= 20:
+    # 从JSON文件加载数据
+    daily_limits = load_daily_limits()
+
+    # 如果今天还没有任何记录，则初始化今天的记录
+    if today_str not in daily_limits:
+        daily_limits[today_str] = {
+            "daily_count": 0,
+            "claimed_users": {}
+        }
+
+    # 1. 检查每日低保总数限制
+    if daily_limits[today_str]["daily_count"] >= 20:
         await bot.send(ev, "\n今天20份低保已经发完了，明天再来吧。" + no, at_sender=True)
         return
-    if uid in gambling_sessions and gambling_sessions[uid].get('active', False) is True:
-        await bot.send(ev, "\n赌徒不能领取低保哦~。"+no, at_sender=True)
-        return
-    # 2. 检查冷却期
-    if uid in last_diabo_time:
-        last_time = last_diabo_time[uid]
-        time_diff = now - last_time
-        if time_diff < timedelta(hours=24):
-            remaining_time = timedelta(hours=24) - time_diff
-            hours = remaining_time.seconds // 3600
-            minutes = (remaining_time.seconds % 3600) // 60
-            await bot.send(ev, f"\n你今天已经领过了，还需等待 {hours} 小时 {minutes} 分钟。" + no, at_sender=True)
-            return
-        
 
+    if uid in gambling_sessions and gambling_sessions[uid].get('active', False) is True:
+        await bot.send(ev, "\n赌徒不能领取低保哦~。" + no, at_sender=True)
+        return
+        
+    # 2. 检查用户今天是否已经领取
+    if uid in daily_limits[today_str]["claimed_users"]:
+        await bot.send(ev, f"\n你今天已经领过了，明天再来吧。" + no, at_sender=True)
+        return
 
     # 3. 获取用户信息 (直接从数据库获取)
     user_info = await getUserInfo(uid)
 
-    # 4 检查股票持仓
+    # 4. 检查股票持仓
     user_portfolio = await get_user_portfolio(uid)  # 使用股票市场模块的函数获取持仓
     if user_portfolio:  # 如果持仓不为空
         stock_names = ", ".join(user_portfolio.keys())
         await bot.send(ev, f"\n检测到你偷偷藏了股票({stock_names})，这么富还想骗低保？" + no, at_sender=True)
         return
-    # 4. 判断是否符合领取条件
+        
+    # 5. 判断是否符合领取条件
     if user_info['fish']['🍙'] > 900:
         await bot.send(ev, "\n检测到你偷偷藏了鱼饵，这么富还想骗低保？" + no, at_sender=True)
         return
-    # 4. 检查背包中是否有鱼
+        
+    # 6. 检查背包中是否有鱼
     fish_types = ['🐟', '🦀', '🐠', '🦈', '🦐', '🐡', '🌟']  # 需要检查的鱼类列表
     for fish_type in fish_types:
         if user_info['fish'].get(fish_type, 0) >= 1:  # 如果不存在，默认值为0
             await bot.send(ev, "\n检测到背包中藏了鱼，请一键出售后再尝试领取" + no, at_sender=True)
             return
 
-    
     user_gold = money.get_user_money(uid, 'gold')
     if user_gold > 4999:
         await bot.send(ev, "\n这么富，还想骗低保？" + no, at_sender=True)
         return
-    
-    last_diabo_time[uid] = now  # 记录领取时间
-    daily_diabo_count[today] = daily_diabo_count.get(today, 0) + 1  # 增加每日计数
 
-    # 5. 发放低保
+    # --- 更新数据并保存 ---
+    # 记录用户领取时间（日期）
+    daily_limits[today_str]["claimed_users"][uid] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # 增加每日总数计数
+    daily_limits[today_str]["daily_count"] += 1
+    # 保存回JSON文件
+    save_daily_limits(daily_limits)
+
+    # 7. 发放低保
     pet = await get_user_pet(uid)
     if pet and not pet["runaway"]:
         money.increase_user_money(uid, 'gold', 6000)
+        # 注意: 此处的 user_gold 是领取前的金额
         await bot.send(ev, f"\n已领取6000金币（含宠物补贴）。\n你现在有{user_gold + 6000}金币" + ok, at_sender=True)
-        return
     else:
         money.increase_user_money(uid, 'gold', 3000)
         await bot.send(ev, f"\n已领取3000金币。\n你现在有{user_gold + 3000}金币" + ok, at_sender=True)
-        return
-
-#增加一个清理过期缓存的函数，定期执行，避免缓存无限增长
-async def clear_expired_cache():
-    while True:
-        now = datetime.now()
-        expired_users = []
-        for uid, last_time in last_diabo_time.items():
-            if now - last_time > timedelta(days=2): # 假设2天未领取则认为过期
-                expired_users.append(uid)
-
-        for uid in expired_users:
-            if uid in last_diabo_time:
-                del last_diabo_time[uid]
-        await asyncio.sleep(3600 * 24) # 每天清理一次
         
         
 @sv.on_prefix(('购买宝石', '买宝石'))
@@ -1563,32 +1509,6 @@ async def buy_gem(bot, ev):
 pending_deletion = set()
 deletion_cooldown = defaultdict(float)  # 用户ID: 上次销户时间戳
 COOLDOWN_HOURS = 24  # 冷却时间24小时
-pending_deletion = set()
-async def delete_user_stock_account(user_id):
-    """删除用户股票账户数据）"""
-    try:
-        uid = str(user_id)
-        
-        # 获取当前持仓数据（带锁）
-        portfolios = await load_json_data(PORTFOLIOS_FILE, {}, portfolio_file_lock)
-        
-        if uid in portfolios:
-            del portfolios[uid]
-            # 保存修改后的数据（带锁）
-            await save_json_data(PORTFOLIOS_FILE, portfolios, portfolio_file_lock)
-            return True
-        return False
-        
-    except Exception as e:
-        hoshino.logger.error(f'删除股票账户失败[{uid}]: {str(e)}')
-        return False
-
-
-async def delete_user_all_accounts(user_id):
-    """删除用户所有账户数据(钱包+股票)"""
-    wallet_result = money.delete_user_account(user_id)  # 同步函数
-    stock_result = await delete_user_stock_account(user_id)  # 异步函数
-    return wallet_result and stock_result
 
 @sv.on_fullmatch(('钱包销户', '注销钱包', '我不玩了', '不想玩了','天台见'))
 async def request_delete_wallet(bot, ev):
