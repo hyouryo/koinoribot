@@ -13,9 +13,8 @@ from .._R import get, userPath
 from hoshino import Service, priv, R
 from hoshino.typing import CQEvent, MessageSegment
 from .. import money, config
-from .petconfig import GACHA_COST, GACHA_REWARDS, GACHA_CONSOLE_PRIZE, BASE_PETS, EVOLUTIONS, growth1, growth2, growth3, PET_SHOP_ITEMS, STATUS_DESCRIPTIONS, PET_SKILLS
-from .pet import get_pet_data, get_user_pets, save_user_pets, get_user_items, save_user_items, get_user_pet, update_user_pet, remove_user_pet, get_user_item_count 
-from .pet import add_user_item, use_user_item, get_status_description, update_pet_status, check_pet_evolution
+from .petconfig import GACHA_COST, GACHA_REWARDS, GACHA_CONSOLE_PRIZE, BASE_PETS, EVOLUTIONS, growth1, growth2, growth3, PET_SHOP_ITEMS, STATUS_DESCRIPTIONS, PET_SKILLS, GACHA_CONFIG
+from .pet import get_pet_data, get_user_pets, get_user_items, get_user_pet, update_user_pet, remove_user_pet, add_user_item, use_user_item, get_status_description, update_pet_status, check_pet_evolution
 from hoshino.config import SUPERUSERS
 
 no = get('emotion/no.png').cqcode
@@ -30,99 +29,100 @@ sv = Service('pet_raising', manage_priv=priv.ADMIN, enable_on_default=True)
 
 
 # --- 扭蛋系统 ---
-@sv.on_prefix(('购买扭蛋', '买扭蛋'))
-async def buy_gacha(bot, ev: CQEvent):
-    user_id = ev.user_id
-    args = ev.message.extract_plain_text().strip().split()
-    try:
-        quantity = int(args[0]) if args else 1
-        if quantity <= 0:
-            await bot.send(ev, "购买数量必须是正整数！", at_sender=True)
-            return
-    except ValueError:
-        await bot.send(ev, "购买数量必须是有效的数字！", at_sender=True)
-        return
-    
-    total_cost = quantity * GACHA_COST
-    user_stones = money.get_user_money(user_id, 'kirastone')
-    if user_stones < total_cost:
-        await bot.send(ev, f"宝石不足！购买{quantity}个扭蛋需要{total_cost}宝石，你只有{user_stones}宝石。\n 使用[买宝石 数量]来购买一些宝石吧~", at_sender=True)
-        return
-    
-    # 扣除宝石并添加扭蛋
-    if money.reduce_user_money(user_id, 'kirastone', total_cost):
-        await add_user_item(user_id, "宠物扭蛋", quantity)
-        await bot.send(ev, f"成功购买了{quantity}个宠物扭蛋！使用'开启扭蛋'来试试手气吧！", at_sender=True)
-    else:
-        await bot.send(ev, "购买失败，请稍后再试！", at_sender=True)
 
-@sv.on_fullmatch(('我的扭蛋', '查看扭蛋'))
-async def show_gacha(bot, ev: CQEvent):
-    user_id = ev.user_id
-    gacha_count = await get_user_item_count(user_id, "宠物扭蛋")
-    await bot.send(ev, f"你目前拥有{gacha_count}个宠物扭蛋。使用'开启扭蛋'来试试手气吧！", at_sender=True)
 
-@sv.on_fullmatch('开启扭蛋', '开扭蛋')
+@sv.on_prefix('开启')
 async def open_gacha(bot, ev: CQEvent):
+    """
+    通用扭蛋开启函数
+    指令格式: 开启扭蛋 [扭蛋名称]
+    """
     user_id = ev.user_id
-    
-    # 检查是否有扭蛋
-    if not await use_user_item(user_id, "宠物扭蛋"):
-        await bot.send(ev, "你没有宠物扭蛋！使用'购买扭蛋'来获取。", at_sender=True)
+    gacha_name = ev.message.extract_plain_text().strip()
+    if not gacha_name:
         return
-    
-    # 获取用户宠物数据
+    if "扭蛋" not in gacha_name:
+        return
+    if gacha_name not in GACHA_CONFIG:
+        await bot.send(ev, f"\n未知的扭蛋类型，目前可开启: {', '.join(GACHA_CONFIG.keys())}\n示例：开启普通扭蛋"+no, at_sender=True)
+        return
+
+    # 检查是否有扭蛋
+    if not await use_user_item(user_id, gacha_name):
+        await bot.send(ev, f"你没有[{gacha_name}]！使用'购买 {gacha_name}'来获取。", at_sender=True)
+        return
+
+    # --- 检查用户宠物状态 (与原逻辑相同) ---
     pet_data = await get_user_pet(user_id)
-    
-    # 检查是否有宠物且是否正式领养
     if pet_data:
-        # 检查是否有temp_data字段来判断是否未正式领养
         if "temp_data" in pet_data:
             pet_type = pet_data["type"]
             # 返还扭蛋
-            await add_user_item(user_id, "宠物扭蛋")
+            await add_user_item(user_id, gacha_name)
             await bot.send(ev, f"\n你已经有一只宠物({pet_type})等待领养了，请先领养或放弃她。" +no, at_sender=True)
             return
         else:
-            # 已有正式领养的宠物，按照原逻辑处理
+            # 已有正式领养的宠物，开启扭蛋只会获得安慰奖
             anwei = random.random() * 100
             if anwei < 50:
                 money.increase_user_money(user_id, 'gold', GACHA_CONSOLE_PRIZE)
                 await bot.send(ev, f"\n你已经有宠物了，本次扭蛋里没有宠物，你获得了{GACHA_CONSOLE_PRIZE}金币作为安慰奖...", at_sender=True)
-                return
             else:
                 money.increase_user_money(user_id, 'luckygold', 1)
                 await bot.send(ev, f"\n你已经有宠物了，本次扭蛋里没有宠物，但是有1枚幸运币...", at_sender=True)
-                return
-    else:
-        # 没有宠物的情况
-        anwei = random.random() * 100
-        if anwei < 25:
-            money.increase_user_money(user_id, 'gold', GACHA_CONSOLE_PRIZE)
-            await bot.send(ev, f"\n扭蛋里没有宠物，你获得了{GACHA_CONSOLE_PRIZE}金币作为安慰奖...", at_sender=True)
-            return
-        elif anwei < 50:
-            money.increase_user_money(user_id, 'luckygold', 1)
-            await bot.send(ev, f"\n扭蛋里没有宠物，但是有1枚幸运币...", at_sender=True)
             return
     
-    roll = random.random() * 100
+    # --- 核心抽奖逻辑 ---
     pet_type = None
+    pool = None
     
-    if roll < 55:  # 普通
-        pool = GACHA_REWARDS["普通"]
-    elif roll < 80:  # 稀有
-        pool = GACHA_REWARDS["稀有"]
-    elif roll < 98:  # 史诗
-        pool = GACHA_REWARDS["史诗"]
-    else:  # 传说
+    # 根据扭蛋类型决定抽奖池和概率
+    if gacha_name == "传说扭蛋":
+        # 必定获得传说宠物
         pool = GACHA_REWARDS["传说"]
+
+    elif gacha_name == "高级扭蛋":
+        # 传说10%，无普通
+        roll = random.random() * 100
+        # 稀有和史诗的概率分配可以根据原比例(25:18)在剩余的90%中分配
+        # 稀有: 90 * (25 / (25+18)) ≈ 52.3%
+        # 史诗: 90 * (18 / (25+18)) ≈ 37.7%
+        if roll < 55:    # 稀有
+            pool = GACHA_REWARDS["稀有"]
+        elif roll < 90:    # 史诗 
+            pool = GACHA_REWARDS["史诗"]
+        else:              # 传说 (10%)
+            pool = GACHA_REWARDS["传说"]
     
+    else: # 默认为 "宠物扭蛋"
+        # 50%概率无事发生
+        anwei = random.random() * 100
+        if anwei < 50:
+             # 根据原逻辑，25%金币，25%幸运币
+            if anwei < 25:
+                money.increase_user_money(user_id, 'gold', GACHA_CONSOLE_PRIZE)
+                await bot.send(ev, f"\n扭蛋里没有宠物，你获得了{GACHA_CONSOLE_PRIZE}金币作为安慰奖...", at_sender=True)
+            else:
+                money.increase_user_money(user_id, 'luckygold', 1)
+                await bot.send(ev, f"\n扭蛋里没有宠物，但是有1枚幸运币...", at_sender=True)
+            return # 直接结束
+
+        # 50%概率获得宠物
+        roll = random.random() * 100
+        if roll < 55:      # 普通
+            pool = GACHA_REWARDS["普通"]
+        elif roll < 80:    # 稀有
+            pool = GACHA_REWARDS["稀有"]
+        elif roll < 98:    # 史诗
+            pool = GACHA_REWARDS["史诗"]
+        else:              # 传说
+            pool = GACHA_REWARDS["传说"]
+
     # 从选择的池中随机宠物
-    pet_type = random.choices(list(pool.keys()), weights=list(pool.values()))[0]
-    
+    if pool:
+        pet_type = random.choices(list(pool.keys()), weights=list(pool.values()))[0]
+
     if pet_type:
-        # 保存临时宠物数据，等待用户确认
         temp_pet = {
             "type": pet_type,
             "temp_data": True,
@@ -131,10 +131,10 @@ async def open_gacha(bot, ev: CQEvent):
         await update_user_pet(user_id, temp_pet)
         pet_data = await get_pet_data()
         rarity = pet_data[pet_type]["rarity"]
-        await bot.send(ev, f"\n恭喜！你抽中了{rarity}宠物【{pet_type}】！\n"
-                          f"请使用'领养宠物 [名字]'来领养它，或使用'放弃宠物'放弃。\n否则你将无法开启新扭蛋。", at_sender=True)
+        await bot.send(ev, f"\n恭喜！你从[{gacha_name}]中抽中了{rarity}宠物【{pet_type}】！\n"
+                           f"请使用'领养宠物 [名字]'来领养它，或使用'放弃宠物'放弃。\n否则你将无法开启新扭蛋。", at_sender=True)
     else:
-        # 安慰奖
+        # 理论上只有普通扭蛋的某些情况会走到这里，做一个兜底
         money.increase_user_money(user_id, 'gold', GACHA_CONSOLE_PRIZE)
         await bot.send(ev, f"很遗憾，这次没有抽中宠物。你获得了{GACHA_CONSOLE_PRIZE}金币作为安慰奖！", at_sender=True)
 
@@ -154,7 +154,7 @@ async def confirm_adopt(bot, ev: CQEvent):
     # 检查临时宠物数据
     temp_pet = await get_user_pet(user_id)
     if not temp_pet or not temp_pet.get("temp_data"):
-        await bot.send(ev, "\n你没有待领养的宠物,不妨试试开扭蛋获取一个吧？", at_sender=True)
+        await bot.send(ev, "\n你没有待领养的宠物,不妨试试 开启扭蛋 获取一个吧？", at_sender=True)
         return
     
     # 检查名字是否已存在
@@ -718,7 +718,7 @@ async def rename_pet(bot, ev):
     # 检查名字是否已存在
     user_pets = await get_user_pets()
     for uid, pet in user_pets.items():
-        if pet["name"] == new_name and uid != str(user_id):
+        if pet.get("name", None) == new_name and uid != str(user_id):
             await bot.send(ev, f"名字'{new_name}'已经被其他宠物使用了，请换一个名字！", at_sender=True)
             return
     
