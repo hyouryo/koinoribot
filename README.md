@@ -4,16 +4,56 @@
 [![试用群](https://img.shields.io/badge/试用/二群-冰祈杂谈分铺-brightgreen)](https://jq.qq.com/?_wv=1027&k=fdFbP60u)
 
 
-## 部署方法
+## KoinoriBot是什么？
+ - KoinoriBot是Hoshinobot的一款插件，提供了很多好玩的功能，包括但不限于钓鱼，炒股，宠物
+ - 是居家旅行必备的群内活跃气氛的小插件
 
-> - 安装Hoshinobot
-> - 下载本仓库，将koinoribot文件夹解压至 `hoshino/modules` 里。
-> - 安装python3.8.0(可根据习惯添加命令行后缀)
-> - cd 进入hoshino/modules/koinoribot文件夹
-> - pip安装 `requirements.txt` 内的所有依赖（直接装koinoribot里的就行，已涵盖HoshinoBot/requirements.txt中的所有依赖）。（示例代码：`pip3.8 install -r requirements.txt` ）
-> - 将`hoshinobot/hoshino/config_example`文件夹更名为`hoshinobot/hoshino/config`
-> - 在 `hoshino/config/__bot__.py` 中的 `MODULES_ON` 里新增一行 `"koinoribot",`。
-> - cd 进入hoshino根目录，启动项目。（示例代码：`python3.8 run.py`）
+
+## 部署方法
+- 安装python3.8.0
+> - 由于过于老旧所以我也不知道怎么装捏
+
+
+- KoinoriBot是一款插件，所以我们需要先安装Hoshinobot
+> - git clone https://github.com/Ice9Coffee/HoshinoBot.git
+
+- 建立虚拟环境
+> - cd Hoshinobot
+> - python3.8 -m venv venv 
+> - source venv/bin/activate
+
+- 更换成国内镜像源（不做也行……但下载速度……你懂的）
+> - pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/
+
+- 将KoinoriBot放置在hoshino/modules下
+> - cd hoshino/modules
+> - git clone https://github.com/CGangel/koinoribot.git
+
+- 安装项目需要的依赖（由于本项目包含了HoshinoBot的所有依赖，所以只需要两条指令哦）
+> - cd koinoribot
+> - pip3.8 install -r requirements.txt
+
+- HoshinoBot项目有一些默认配置需要导入哦(HoshinoBot/hoshino/)
+> - cd ../../
+> - mv ./config_example ./config
+
+- 将本项目加载到HoshinoBot
+> - cd config
+- 在 `__bot__.py` 中的 `MODULES_ON` 里新增一行 `"koinoribot",`，但我不会用命令行填进去
+- 所以……麻烦你使用vi手动填一下吧
+> - vi \_\_bot\_\_.py
+- 终于，到最后一步啦~
+- 去Hoshinobot根目录启动一下吧~
+> - cd ../../ 
+> - python3.8 run.py
+
+# 部署后的使用方法
+- 进入机器人的根目录
+> - cd HoshinoBot
+- 启动虚拟环境
+> - source venv/bin/activate
+- 启动机器人
+> - python3.8 run.py
 
 
 <details>
@@ -37,7 +77,7 @@
 
 
 <details>
- <summary> 关于如何安装Hoshinobot </summary> 
+ <summary> 关于Hoshinobot </summary> 
 
 - 仓库传送门 [Hoshinobot](https://github.com/Ice9Coffee/HoshinoBot) (作者： [Ice9Coffee](https://github.com/Ice9Coffee))
 
