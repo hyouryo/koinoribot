@@ -28,7 +28,7 @@ source venv/bin/activate
 
 - 更换成国内镜像源（不做也行……但下载速度……你懂的）
 ```sh
-pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/
+pip3.8 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/
 ```
 - 将KoinoriBot放置在hoshino/modules下
 ```sh
