@@ -11,49 +11,69 @@
 
 ## 部署方法
 - 安装python3.8.0
-> - 由于过于老旧所以我也不知道怎么装捏
-
+```
+由于过于老旧所以我也不知道怎么装捏
+```
 
 - KoinoriBot是一款插件，所以我们需要先安装Hoshinobot
-> - git clone https://github.com/Ice9Coffee/HoshinoBot.git
-
+```sh
+git clone https://github.com/Ice9Coffee/HoshinoBot.git
+```
 - 建立虚拟环境
-> - cd Hoshinobot
-> - python3.8 -m venv venv 
-> - source venv/bin/activate
+```sh
+cd Hoshinobot
+python3.8 -m venv venv 
+source venv/bin/activate
+```
 
 - 更换成国内镜像源（不做也行……但下载速度……你懂的）
-> - pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/
-
+```sh
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/
+```
 - 将KoinoriBot放置在hoshino/modules下
-> - cd hoshino/modules
-> - git clone https://github.com/CGangel/koinoribot.git
-
+```sh
+cd hoshino/modules
+git clone https://github.com/CGangel/koinoribot.git
+```
 - 安装项目需要的依赖（由于本项目包含了HoshinoBot的所有依赖，所以只需要两条指令哦）
-> - cd koinoribot
-> - pip3.8 install -r requirements.txt
-
+```sh
+cd koinoribot
+pip3.8 install -r requirements.txt
+```
 - HoshinoBot项目有一些默认配置需要导入哦(HoshinoBot/hoshino/)
-> - cd ../../
-> - mv ./config_example ./config
-
+```sh
+cd ../../
+mv ./config_example ./config
+```
 - 将本项目加载到HoshinoBot
-> - cd config
+```sh
+cd config
+```
 - 在 `__bot__.py` 中的 `MODULES_ON` 里新增一行 `"koinoribot",`，但我不会用命令行填进去
 - 所以……麻烦你使用vi手动填一下吧
-> - vi \_\_bot\_\_.py
+```sh
+vi __bot__.py
+```
 - 终于，到最后一步啦~
 - 去Hoshinobot根目录启动一下吧~
-> - cd ../../ 
-> - python3.8 run.py
+```sh
+cd ../../ 
+python3.8 run.py
+```
 
 # 部署后的使用方法
 - 进入机器人的根目录
-> - cd HoshinoBot
+```sh
+cd HoshinoBot
+```
 - 启动虚拟环境
-> - source venv/bin/activate
+```sh
+source venv/bin/activate
+```
 - 启动机器人
-> - python3.8 run.py
+```sh
+python3.8 run.py
+```
 
 
 <details>
