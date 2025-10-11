@@ -105,5 +105,5 @@ python3.8 run.py
 
 
 ## 个人部署环境参考
- - 服务器：Windows Server 2019
+ - 操作系统：Debian 12.10
  - Python版本：3.8.0
