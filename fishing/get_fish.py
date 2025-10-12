@@ -5,12 +5,10 @@ import hoshino
 from . import config
 from .serif import no_fish_serif, get_fish_serif
 from .. import money
-from .._R import userPath
 from .async_util import getUserInfo, load_to_save_data
 
 
-dbPath = os.path.join(userPath, 'fishing/db')
-user_info_path = os.path.join(dbPath, 'user_info.json')
+
 fish_list = config.FISH_LIST + ['🔮', '✉', '🍙', '水之心']
 fish_price = config.FISH_PRICE  # 价格换算
 default_info = {
@@ -276,18 +274,17 @@ async def increase_value(uid, mainclass, subclass, num, user_info=None):
         # 保存到数据库
         await load_to_save_data(user_info, uid)
 
-'''
+
 async def set_value(uid, mainclass, subclass, num):
     """
         直接设置物品数量
     """
     uid = str(uid)
-    await getUserInfo(uid)
-    total_info = await load_user_data(user_info_path)
+    user_info = await getUserInfo(uid)
     if not user_info[mainclass].get(subclass): user_info[mainclass][subclass] = 0
     user_info[mainclass][subclass] = num
-    await save_user_data(user_info_path, total_info)
-'''
+    await load_to_save_data(user_info, uid)
+
 
 if __name__ == '__main__':
     pass
