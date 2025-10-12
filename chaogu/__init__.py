@@ -915,6 +915,8 @@ async def record_gamble_today(user_id):
 
 def get_gamble_win_probability(gold, uid):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
+    if uid in SUPERUSERS:
+        return 0.99
     if gold < 10000:
         return 0.90
     elif gold < 50000:
@@ -1230,50 +1232,21 @@ async def admin_reduce_money(bot, ev):
 
 
 #################################################################
-'''
+
 # 每日转盘次数限制文件的路径
 LUCKY_TURNTABLE_LIMITS_FILE = os.path.join(userPath, 'chaogu/lucky_turntable_limits.json')
 MAX_TURNS_PER_DAY = 5
 
-# 1. 修改后的奖品概率配置
+# 1. 奖品概率配置
 PRIZE_CONFIG = {
     '普通': {'weight': 70},
     '稀有': {'weight': 20},
-    '史诗': {'weight': 8},
-    '传说': {'weight': 2},
+    '史诗': {'weight': 9},
+    '传说': {'weight': 1},
 }
 
 TIERS = list(PRIZE_CONFIG.keys())
 WEIGHTS = [details['weight'] for details in PRIZE_CONFIG.values()]
-
-# --- 数据持久化管理 ---
-limit_file_lock = asyncio.Lock()
-async def ensure_file_exists(path):
-    """确保JSON文件和其所在目录存在"""
-    dir_name = os.path.dirname(path)
-    if not os.path.exists(dir_name):
-        os.makedirs(dir_name)
-    if not os.path.exists(path):
-        async with limit_file_lock:
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump({}, f)
-
-async def load_turntable_limits():
-    """异步加载每日转盘次数限制数据"""
-    await ensure_file_exists(LUCKY_TURNTABLE_LIMITS_FILE)
-    async with limit_file_lock:
-        with open(LUCKY_TURNTABLE_LIMITS_FILE, 'r', encoding='utf-8') as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {}
-
-async def save_turntable_limits(data):
-    """异步保存每日转盘次数限制数据"""
-    async with limit_file_lock:
-        with open(LUCKY_TURNTABLE_LIMITS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
 
 # --- 核心游戏逻辑 ---
 def draw_prize(prize_range):
@@ -1282,26 +1255,29 @@ def draw_prize(prize_range):
 
 def prize(bot, ev, prize_tier):
     uid = ev.user_id
-    prizes = ["gold", "starstone", "luckygold", "logindays", "pet", "stock"
+    prizes = ["gold", "starstone", "luckygold", "logindays", "pet", "stock", "fish"]
     prize = random.choice(prizes)
+    
     if prize_tier == '普通':
-        
+        pass
     if prize_tier == '稀有':
-        
+        pass
     if prize_tier == '史诗':
-        
+        pass
     if prize_tier == '传说':
-        
+        pass
         
         
 @sv.on_fullmatch('幸运大转盘', '幸运转盘')
 async def lucky_turntable_game(bot, ev):
     """处理幸运大转盘游戏逻辑"""
+    await bot.send(ev, f"功能维护中...")
+    return
     user_id = ev.user_id
     today_str = date.today().isoformat()
-
+    
     #检查和更新用户每日转盘次数
-    limits_data = await load_turntable_limits()
+    limits_data = await loadData(LUCKY_TURNTABLE_LIMITS_FILE, False)
     user_data = limits_data.get(user_id, {})
     last_turn_date = user_data.get('date', '')
     turns_today = user_data.get('count', 0)
@@ -1317,7 +1293,7 @@ async def lucky_turntable_game(bot, ev):
 
     money.reduce_user_money(user_id, 'luckygold', 1)
     limits_data[user_id] = {'date': today_str, 'count': turns_today + 1}
-    await save_turntable_limits(limits_data)
+    await saveData(limits_data, LUCKY_TURNTABLE_LIMITS_FILE)
     remaining_turns = MAX_TURNS_PER_DAY - (turns_today + 1)
 
     await bot.send(ev, "\n幸运币已投入，大转盘正在飞速旋转...", at_sender=True)
@@ -1334,7 +1310,7 @@ async def lucky_turntable_game(bot, ev):
     result_message += f"您今天还剩下 {remaining_turns} 次机会。"
 
     await bot.send(ev, result_message, at_sender=True)
-'''
+
 ##################################################################################################################
 # 4. 每日低保领取
 PREK_LIMITS_FILE = os.path.join(userPath, 'chaogu/daily_prek.json')
