@@ -10,7 +10,7 @@ import asyncio # 用于文件锁
 import io         # 用于在内存中处理图像
 import plotly.graph_objects as go
 import plotly.io as pio
-from ..utils import chain_reply
+from ..utils import chain_reply, saveData, loadData
 from .._R import get, userPath
 from ..fishing.async_util import getUserInfo
 from hoshino import Service, priv, R
@@ -884,18 +884,16 @@ MAX_GAMBLE_ROUNDS = 5
 # key: user_id, value: {'round': int, 'confirmed': bool, 'active': bool}
 gambling_sessions = {}
 
-# 每日限制文件锁
-gamble_limit_lock = asyncio.Lock()
 
 
 
 async def load_gamble_limits():
     """加载每日赌博限制数据"""
-    return load_json_data(GAMBLE_LIMITS_FILE, {}, gamble_limit_lock)
+    return loadData(GAMBLE_LIMITS_FILE, False)
 
 async def save_gamble_limits(data):
     """保存每日赌博限制数据"""
-    save_json_data(GAMBLE_LIMITS_FILE, data, gamble_limit_lock)
+    saveData(data, GAMBLE_LIMITS_FILE)
 
 async def check_daily_gamble_limit(user_id):
     """检查用户今天是否已经赌过"""
@@ -917,7 +915,6 @@ async def record_gamble_today(user_id):
 
 def get_gamble_win_probability(gold, uid):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
-
     if gold < 10000:
         return 0.90
     elif gold < 50000:
@@ -1342,27 +1339,6 @@ async def lucky_turntable_game(bot, ev):
 # 4. 每日低保领取
 PREK_LIMITS_FILE = os.path.join(userPath, 'chaogu/daily_prek.json')
 
-def load_daily_limits():
-    """
-    加载每日低保记录文件。
-    如果文件或目录不存在，则创建它。
-    如果文件为空或损坏，则返回一个空的字典。
-    """
-    try:
-        # 确保目录存在
-        os.makedirs(os.path.dirname(PREK_LIMITS_FILE), exist_ok=True)
-        # 尝试读取文件
-        with open(PREK_LIMITS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-def save_daily_limits(data):
-    """将低保记录写入JSON文件"""
-    with open(PREK_LIMITS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-
 # 领取低保的命令处理函数
 @sv.on_fullmatch("领低保")
 async def diabo(bot, ev):
@@ -1374,7 +1350,7 @@ async def diabo(bot, ev):
         return
 
     # 从JSON文件加载数据
-    daily_limits = load_daily_limits()
+    daily_limits = loadData(PREK_LIMITS_FILE, False)
 
     # 如果今天还没有任何记录，则初始化今天的记录
     if today_str not in daily_limits:
@@ -1430,7 +1406,7 @@ async def diabo(bot, ev):
     # 增加每日总数计数
     daily_limits[today_str]["daily_count"] += 1
     # 保存回JSON文件
-    save_daily_limits(daily_limits)
+    saveData(daily_limits, PREK_LIMITS_FILE)
 
     # 7. 发放低保
     pet = await get_user_pet(uid)

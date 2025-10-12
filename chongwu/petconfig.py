@@ -199,9 +199,19 @@ PET_SHOP_ITEMS = {
         "growth": 0,
         "effect": "快速恢复宠物精力"
     },
-    "宠物扭蛋": {
+    "普通扭蛋": {
         "price": 10,
         "effect": "随机获得一只宠物",
+        "type": "gacha"
+    },
+    "高级扭蛋": {
+        "price": 100,
+        "effect": "更高的概率获得珍贵宠物",
+        "type": "gacha"
+    },
+    "传说扭蛋": {
+        "price": 1000,
+        "effect": "必定获得一只传说宠物",
         "type": "gacha"
     },
     "奶油蛋糕": {
@@ -254,7 +264,23 @@ PET_SHOP_ITEMS = {
     },
 }
 
-
+GACHA_CONFIG = {
+    "普通扭蛋": {
+        "price": 10,
+        "effect": "随机获得一只宠物",
+        "type": "gacha"
+    },
+    "高级扭蛋": {
+        "price": 100,
+        "effect": "更高的概率获得珍贵宠物",
+        "type": "gacha"
+    },
+    "传说扭蛋": {
+        "price": 1000,
+        "effect": "必定获得一只传说宠物",
+        "type": "gacha"
+    },
+}
 
 
 
