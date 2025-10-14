@@ -20,29 +20,30 @@ def saveData(obj, fp):
     :param obj: 将要保存的数据
     :param fp: 文件路径
     """
-    with open(fp, 'r+', encoding="utf-8") as file:
-        file.truncate(0)
-        json.dump(obj, file, ensure_ascii=False)
+    # 确保目录存在
+    os.makedirs(os.path.dirname(fp), exist_ok=True)
+    
+    with open(fp, 'w', encoding="utf-8") as file:
+        json.dump(obj, file, ensure_ascii=False, indent=2)  # 添加indent使输出更可读
 
-
-def loadData(fp, is_list = False):
+def loadData(fp, is_list=False):
     """
-        加载json，不存在则创建
+    加载json，不存在则创建
+
+    :param fp: 文件路径
+    :param is_list: 如果文件不存在，创建的默认数据类型
     """
     if os.path.exists(fp):
-        file = json.load(open(fp, 'r', encoding='utf-8'))
-        return file
+        with open(fp, 'r', encoding='utf-8') as file:
+            return json.load(file)
     else:
-        if not is_list:
-            empty_dict = {}
-            with open(fp, 'w', encoding='utf-8') as file:
-                json.dump(empty_dict, file, ensure_ascii=False)
-            return empty_dict
-        else:
-            empty_list = []
-            with open(fp, 'w', encoding='utf-8') as file:
-                json.dump(empty_list, file, ensure_ascii=False)
-            return empty_list
+        # 确保目录存在
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        
+        default_data = [] if is_list else {}
+        with open(fp, 'w', encoding='utf-8') as file:
+            json.dump(default_data, file, ensure_ascii=False, indent=2)
+        return default_data
 
 
 def is_http_url(url):
