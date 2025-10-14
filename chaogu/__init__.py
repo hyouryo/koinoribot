@@ -1237,65 +1237,87 @@ MAX_TURNS_PER_DAY = 5
 
 # 1. 奖品概率配置
 PRIZE_CONFIG = {
-    '普通': {'weight': 70},
-    '稀有': {'weight': 20},
-    '史诗': {'weight': 9},
-    '传说': {'weight': 1},
+    '普通': {'weight': 100},
+    '稀有': {'weight': 0},
+    '史诗': {'weight': 0},
+    '传说': {'weight': 0},
 }
 
 TIERS = list(PRIZE_CONFIG.keys())
 WEIGHTS = [details['weight'] for details in PRIZE_CONFIG.values()]
 
 # --- 核心游戏逻辑 ---
-def draw_prize(prize_range):
+def draw_prize():
     """根据权重随机抽取一个奖品档位"""
     return random.choices(TIERS, weights=WEIGHTS, k=1)[0]
 
 def prize(bot, ev, prize_tier):
     uid = ev.user_id
-    prizes = ["gold", "starstone", "luckygold", "logindays", "pet", "stock", "fish"]
-    prize = random.choice(prizes)
+    prizes = {
+        "gold": {"amount": 100, "chinese": "金币"},
+        "starstone": {"amount": 100, "chinese": "星星"},
+        "luckygold": {"amount": 0.4, "chinese": "幸运币"},
+        "logindays": {"amount": 0.2, "chinese": "登录天数"}
+    }
+    
+    prize_name = random.choice(list(prizes.keys()))
+    prize_info = prizes[prize_name]
+    prize_amount = int(prize_info["amount"] * random.randint(5, 15))
+    chinese_name = prize_info["chinese"]
     
     if prize_tier == '普通':
-        pass
+        money.increase_user_money(uid, prize_name, prize_amount)
+        prize_description = f"{chinese_name} *{prize_amount}"
+        return prize_description
     if prize_tier == '稀有':
-        pass
+        prize_description = f"功能测试中..."
+        return prize_description
     if prize_tier == '史诗':
-        pass
+        prize_description = f"功能测试中..."
+        return prize_description
     if prize_tier == '传说':
-        pass
+        prize_description = f"功能测试中..."
+        return prize_description
         
         
 @sv.on_fullmatch('幸运大转盘', '幸运转盘')
 async def lucky_turntable_game(bot, ev):
     """处理幸运大转盘游戏逻辑"""
-    await bot.send(ev, f"功能维护中...")
-    return
+
     user_id = ev.user_id
     today_str = date.today().isoformat()
-    
+    print(today_str)
+    #if user_id not in SUPERUSERS:
+            #await bot.send(ev, f"功能维护中...")
+            #return
     #检查和更新用户每日转盘次数
-    limits_data = await loadData(LUCKY_TURNTABLE_LIMITS_FILE, False)
-    user_data = limits_data.get(user_id, {})
+    limits_data = loadData(LUCKY_TURNTABLE_LIMITS_FILE, False)
+    
+    user_id_str = str(user_id)
+    user_data = limits_data.get(user_id_str, {})
     last_turn_date = user_data.get('date', '')
     turns_today = user_data.get('count', 0)
+    
     if last_turn_date != today_str:
         turns_today = 0
-    if turns_today >= MAX_TURNS_PER_DAY:
+        
+    if turns_today >= MAX_TURNS_PER_DAY and user_id not in SUPERUSERS:
         await bot.send(ev, f"您今天的 {MAX_TURNS_PER_DAY} 次机会已经用完啦，明天再来吧！", at_sender=True)
         return
+        
     lucky_coins = money.get_user_money(user_id, 'luckygold') 
     if lucky_coins < 1:
         await bot.send(ev, "\n您的幸运币不足，无法启动转盘哦。", at_sender=True)
         return
 
     money.reduce_user_money(user_id, 'luckygold', 1)
-    limits_data[user_id] = {'date': today_str, 'count': turns_today + 1}
-    await saveData(limits_data, LUCKY_TURNTABLE_LIMITS_FILE)
+    
+    limits_data[user_id_str] = {'date': today_str, 'count': turns_today + 1}
+    saveData(limits_data, LUCKY_TURNTABLE_LIMITS_FILE)
     remaining_turns = MAX_TURNS_PER_DAY - (turns_today + 1)
 
-    await bot.send(ev, "\n幸运币已投入，大转盘正在飞速旋转...", at_sender=True)
-    await asyncio.sleep(1)
+    #await bot.send(ev, "\n幸运币已投入，大转盘正在飞速旋转...", at_sender=True)
+    #await asyncio.sleep(1)
 
     # 抽取奖品档位
     prize_tier = draw_prize()
@@ -1303,7 +1325,7 @@ async def lucky_turntable_game(bot, ev):
     prize_description = prize(bot, ev, prize_tier)
 
     # 3. 构造并发送最终的中奖消息
-    result_message = f"\n恭喜！指针停在了【{prize_tier}】区域！\n"
+    result_message = f"\n指针停在了【{prize_tier}】区域！\n"
     result_message += f"您获得了：{prize_description}\n\n"
     result_message += f"您今天还剩下 {remaining_turns} 次机会。"
 
