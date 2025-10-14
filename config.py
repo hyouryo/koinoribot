@@ -57,13 +57,13 @@ PLUS_TOKEN = ''
 JHAPI_API = ''
 
 #新增功能
-maxhp = 100000                   #萝莉初始血量
-lowdamage = 1000                  #捉萝莉伤害下限
-highdamage = 5000               #捉萝莉伤害上限
-loliprice = 1000                 #捉萝莉需要消耗的鱼饵数量
+maxhp = 10000                  #萝莉初始血量
+lowdamage = 1000                #捉萝莉伤害下限
+highdamage = 2000               #捉萝莉伤害上限
+loliprice = 1000                #捉萝莉需要消耗的鱼饵数量
 miss = 0.5                      #捉萝莉miss概率(a)
 bbjb = 0.5                      #miss后爆用户金币的概率(b)——综合概率：a*b
-bjb = 0.5                      #爆萝莉金币的概率（c）——综合概率：(1-a)*c
+bjb = 0.5                       #爆萝莉金币的概率（c）——综合概率：(1-a)*c
 xinyun_bjb = 0.03               #捉萝莉幸运大奖概率（d）——综合概率：(1-a)*c*d
 jishagold = 10000               #击杀奖励
 bosstime = 2                    #是否开启boss战  0关闭  1开启  其余数字则鱼塘和boss战同时开启
@@ -73,23 +73,27 @@ transfer_fee = 0.1              #转账手续费比率，0为不收取
 stone_fee = 0.5                 #退还宝石手续费比率，0为不收取
 maxtype = 4                     #股票持有种类上限
 maxcount = 500                  #每种股票持有数量上限
-star_price = 0                  #多连钓鱼是否消耗对应数量的星星（1为消耗，0为不消耗）
-extra_gold = 0                  #钓鱼补贴（1为开启，0为关闭）
+star_price = 1                  #多连钓鱼是否消耗对应数量的星星（1为消耗，0为不消耗）
+extra_gold = 1                  #钓鱼补贴（1为开启，0为关闭）
 abilityfee = 100                #生成超能力所需的金币
 
+#jm车牌号功能
+jm_price = 1000                 #查找车牌号的单次价格
+jm_group = [984760873, 971976533, 348831286, 748733770]
 # 钓鱼
-ADMIN_GROUP = 348831286                         # 漂流瓶审核群(必须有一个)
-COOL_TIME = 30                                  # 单抽钓鱼冷却时长
+ADMIN_GROUP = 348831286                         #漂流瓶审核群(必须有一个)
+COOL_TIME = 30                                  #单抽钓鱼冷却时长
 fishcd = 30                                     #除单抽钓鱼以外的通用钓鱼冷却
-THROW_COOL_TIME = 5                            # 扔漂流瓶冷却时长
-SALVAGE_COOL_TIME = 5                          # 捡漂流瓶冷却时长
-COMMENT_COOL_TIME = 5                          # 评论漂流瓶冷却时长
-BAIT_PRICE = 3                                  # 鱼饵的价格
-BOTTLE_PRICE = 100                              # 漂流瓶的价格，建议为 (水之心转化为漂流瓶的数量+1)×碎片转化为水之心的数量
-COMMENT_PRICE = 50                              # 评论漂流瓶需要的金币（删除不会返还）
-FRAG_TO_CRYSTAL = 50                            # 碎片转化为水之心的数量
-CRYSTAL_TO_BOTTLE = 1                           # 水之心转化为漂流瓶的数量
-CRYSTAL_TO_NET = 1                              # 捞漂流瓶需要的水之心数量
+THROW_COOL_TIME = 5                             #扔漂流瓶冷却时长
+SALVAGE_COOL_TIME = 5                           #捡漂流瓶冷却时长
+COMMENT_COOL_TIME = 5                           #评论漂流瓶冷却时长
+BAIT_NUM = 10                                   #钓鱼所需鱼饵
+BAIT_PRICE = 3                                  #鱼饵的价格
+BOTTLE_PRICE = 100                              #漂流瓶的价格，建议为 (水之心转化为漂流瓶的数量+1)×碎片转化为水之心的数量
+COMMENT_PRICE = 50                              #评论漂流瓶需要的金币（删除不会返还）
+FRAG_TO_CRYSTAL = 50                            #碎片转化为水之心的数量
+CRYSTAL_TO_BOTTLE = 1                           #水之心转化为漂流瓶的数量
+CRYSTAL_TO_NET = 1                              #捞漂流瓶需要的水之心数量
 BLACKUSERS = []
 
 FISH_LIST = ['🐟', '🦐', '🦀', '🐡', '🐠', '🦈', '🌟']   # 可钓起的鱼列表，如果更新则务必在下面添加其价格和上钩概率
