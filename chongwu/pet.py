@@ -36,11 +36,9 @@ def init_pet_database_sync():
     # 创建user_items表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_items (
-            uid TEXT NOT NULL,
-            item_name TEXT NOT NULL,
-            quantity INTEGER NOT NULL DEFAULT 0,
-            updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (uid, item_name)
+            uid TEXT PRIMARY KEY,
+            items_data TEXT NOT NULL,
+            updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     

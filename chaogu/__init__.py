@@ -16,7 +16,7 @@ from ..fishing.async_util import getUserInfo
 from hoshino import Service, priv, R
 from hoshino.typing import CQEvent, MessageSegment
 from .. import money, config
-from ..chongwu.pet import get_user_pet
+from ..chongwu.pet import get_user_pet, add_user_item
 from collections import defaultdict
 sv = Service('stock_market', manage_priv=priv.ADMIN, enable_on_default=True)
 from hoshino.config import SUPERUSERS
@@ -915,6 +915,8 @@ async def record_gamble_today(user_id):
 
 def get_gamble_win_probability(gold, uid):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
+    if uid in SUPERUSERS:
+        return 0.99
     if gold < 10000:
         return 0.90
     elif gold < 50000:
@@ -1237,47 +1239,50 @@ MAX_TURNS_PER_DAY = 5
 
 # 1. 奖品概率配置
 PRIZE_CONFIG = {
-    '普通': {'weight': 100},
-    '稀有': {'weight': 0},
-    '史诗': {'weight': 0},
-    '传说': {'weight': 0},
+    '普通': {'weight': 75, 'multiplier': 1, 'special_chance': 0.0, 'special_prizes': []},
+    '稀有': {'weight': 15, 'multiplier': 2, 'special_chance': 0.5, 'special_prizes': ["高级料理", "玩具球", "能量饮料", "普通扭蛋", "遗忘药水"]},
+    '史诗': {'weight': 9, 'multiplier': 5, 'special_chance': 0.75, 'special_prizes': ["豪华料理", "高级扭蛋", "时之泪", "最初的契约", "技能药水"]},
+    '传说': {'weight': 1, 'multiplier': 10, 'special_chance': 0.75, 'special_prizes': ["奶油蛋糕", "豪华蛋糕", "传说扭蛋", "誓约戒指", "钱包金币翻倍"]},
 }
 
 TIERS = list(PRIZE_CONFIG.keys())
 WEIGHTS = [details['weight'] for details in PRIZE_CONFIG.values()]
+
+# 基础奖品配置
+PRIZES = {
+    "gold": {"amount": 200, "chinese": "金币"},
+    "starstone": {"amount": 200, "chinese": "星星"},
+    "luckygold": {"amount": 0.1, "chinese": "幸运币"},
+    "logindays": {"amount": 0.1, "chinese": "登录天数"}
+}
 
 # --- 核心游戏逻辑 ---
 def draw_prize():
     """根据权重随机抽取一个奖品档位"""
     return random.choices(TIERS, weights=WEIGHTS, k=1)[0]
 
-def prize(bot, ev, prize_tier):
+async def prize(bot, ev, prize_tier):
+    """处理奖品发放逻辑"""
     uid = ev.user_id
-    prizes = {
-        "gold": {"amount": 100, "chinese": "金币"},
-        "starstone": {"amount": 100, "chinese": "星星"},
-        "luckygold": {"amount": 0.4, "chinese": "幸运币"},
-        "logindays": {"amount": 0.2, "chinese": "登录天数"}
-    }
+    config = PRIZE_CONFIG[prize_tier]
     
-    prize_name = random.choice(list(prizes.keys()))
-    prize_info = prizes[prize_name]
-    prize_amount = int(prize_info["amount"] * random.randint(5, 15))
-    chinese_name = prize_info["chinese"]
-    
-    if prize_tier == '普通':
+    # 决定是发放特殊奖品还是普通奖品
+    if random.random() < config['special_chance'] and config['special_prizes']:
+        special_prize = random.choice(config['special_prizes'])
+        if special_prize == "钱包金币翻倍":
+            user_gold = money.get_user_money(uid, 'gold')
+            money.increase_user_money(uid, 'gold', user_gold)
+            return special_prize
+        else:
+            await add_user_item(uid, special_prize)
+            return special_prize
+    else:
+        # 发放普通资源奖品
+        prize_name = random.choice(list(PRIZES.keys()))
+        prize_info = PRIZES[prize_name]
+        prize_amount = max(1, int(prize_info["amount"] * random.randint(10, 20) * config['multiplier']))
         money.increase_user_money(uid, prize_name, prize_amount)
-        prize_description = f"{chinese_name} *{prize_amount}"
-        return prize_description
-    if prize_tier == '稀有':
-        prize_description = f"功能测试中..."
-        return prize_description
-    if prize_tier == '史诗':
-        prize_description = f"功能测试中..."
-        return prize_description
-    if prize_tier == '传说':
-        prize_description = f"功能测试中..."
-        return prize_description
+        return f"{prize_info['chinese']} *{prize_amount}"
         
         
 @sv.on_fullmatch('幸运大转盘', '幸运转盘')
@@ -1286,7 +1291,6 @@ async def lucky_turntable_game(bot, ev):
 
     user_id = ev.user_id
     today_str = date.today().isoformat()
-    print(today_str)
     #if user_id not in SUPERUSERS:
             #await bot.send(ev, f"功能维护中...")
             #return
@@ -1322,7 +1326,7 @@ async def lucky_turntable_game(bot, ev):
     # 抽取奖品档位
     prize_tier = draw_prize()
     
-    prize_description = prize(bot, ev, prize_tier)
+    prize_description = await prize(bot, ev, prize_tier)
 
     # 3. 构造并发送最终的中奖消息
     result_message = f"\n指针停在了【{prize_tier}】区域！\n"
