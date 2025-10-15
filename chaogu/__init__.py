@@ -24,29 +24,6 @@ from .stock_utils import STOCKS, MARKET_EVENTS, MANUAL_EVENT_TYPES, get_stock_da
 no = get('emotion/no.png').cqcode
 ok = get('emotion/ok.png').cqcode
 
-def load_json_data(filename, default_data, lock):
-    """加载JSON数据"""
-    if not os.path.exists(filename):
-        return default_data
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        # 文件损坏或读取错误，返回默认值
-        return default_data
-
-def save_json_data(filename, data, lock):
-    """保存JSON数据"""
-    try:
-        # 确保目录存在
-        os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
-        # 使用临时文件和原子移动来增加保存的安全性
-        temp_filename = filename + ".tmp"
-        with open(temp_filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        os.replace(temp_filename, filename) # 原子操作替换
-    except IOError as e:
-        print(f"Error saving JSON data to {filename}: {e}")
 
 
 # 事件触发概率配置
