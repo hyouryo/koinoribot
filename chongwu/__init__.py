@@ -25,7 +25,39 @@ sv = Service('pet_raising', manage_priv=priv.ADMIN, enable_on_default=True)
 
 
 
-
+@sv.on_prefix(('退还宠物用品', '退还'))
+async def return_items(bot, ev):
+    user_id = ev.user_id
+    args = ev.message.extract_plain_text().strip().split()
+    # 检查参数
+    if not args:
+        #await bot.send(ev, "\n未知的宠物用品。" + no, at_sender=True)
+        return
+    item_name = args[0]
+    if item_name not in PET_SHOP_ITEMS:
+        #await bot.send(ev, "\n未知的宠物用品。" + no, at_sender=True)
+        return
+    user_items = (await get_user_items()).get(str(user_id), {})
+    count = user_items.get(item_name, 0)
+    try:
+        quantity = int(args[1]) if len(args) > 1 else 1
+        if quantity <= 0:
+            await bot.send(ev, "\n退还数量必须是正整数！" +no, at_sender=True)
+            return
+        if count < quantity:
+            await bot.send(ev, f"\n你当前只有{count}个{item_name}！" +no, at_sender=True)
+            return
+    except ValueError:
+        await bot.send(ev, "\n退还数量必须是有效的数字！", at_sender=True)
+        return
+    
+    price = int(PET_SHOP_ITEMS[item_name]["price"] * quantity * config.return_item_fee)
+    fee = config.return_item_fee * 100
+    if await use_user_item(user_id, item_name, quantity):
+        money.increase_user_money(user_id, 'kirastone', price)
+        await bot.send(ev, f"\n按照{fee}%的价格成功退还了{quantity}个{item_name}！\n你获得了{price}个宝石。", at_sender=True)
+    else:
+        await bot.send(ev, "操作失败，请稍后再试！", at_sender=True)
 
 
 # --- 扭蛋系统 ---
@@ -1072,7 +1104,7 @@ pet_help = """
 
 【其他】
 1. 买宝石 [数量] - 购买宝石
-2. 退还宝石 [数量] - 退还宝石
+2. 卖宝石 [数量] - 退还宝石
 3. 宠物帮助 - 显示本帮助
 4. 宠物排行榜 - 查看成长值最高的成年体宠物
 5. 宠物排名 - 查看自己宠物的排名

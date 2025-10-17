@@ -1214,10 +1214,11 @@ MAX_TURNS_PER_DAY = 5
 
 # 1. 奖品概率配置
 PRIZE_CONFIG = {
-    '普通': {'weight': 75, 'multiplier': 1, 'special_chance': 0.0, 'special_prizes': []},
-    '稀有': {'weight': 15, 'multiplier': 2, 'special_chance': 0.5, 'special_prizes': ["高级料理", "玩具球", "能量饮料", "普通扭蛋", "遗忘药水"]},
-    '史诗': {'weight': 9, 'multiplier': 5, 'special_chance': 0.75, 'special_prizes': ["豪华料理", "高级扭蛋", "时之泪", "最初的契约", "技能药水"]},
-    '传说': {'weight': 1, 'multiplier': 10, 'special_chance': 0.75, 'special_prizes': ["奶油蛋糕", "豪华蛋糕", "传说扭蛋", "誓约戒指", "钱包金币翻倍"]},
+    '杂鱼': {'weight': 30, 'multiplier': 0.1, 'special_chance': 0.75, 'special_prizes': ["钱包金币-1%"]},
+    '普通': {'weight': 50, 'multiplier': 1, 'special_chance': 0.0, 'special_prizes': []},
+    '稀有': {'weight': 15, 'multiplier': 5, 'special_chance': 0.5, 'special_prizes': ["高级料理", "玩具球", "能量饮料", "普通扭蛋", "遗忘药水"]},
+    '史诗': {'weight': 4, 'multiplier': 20, 'special_chance': 0.5, 'special_prizes': ["豪华料理", "高级扭蛋", "时之泪", "最初的契约", "技能药水"]},
+    '传说': {'weight': 1, 'multiplier': 100, 'special_chance': 0.5, 'special_prizes': ["奶油蛋糕", "豪华蛋糕", "传说扭蛋", "誓约戒指", "钱包金币翻倍"]},
 }
 
 TIERS = list(PRIZE_CONFIG.keys())
@@ -1225,10 +1226,10 @@ WEIGHTS = [details['weight'] for details in PRIZE_CONFIG.values()]
 
 # 基础奖品配置
 PRIZES = {
-    "gold": {"amount": 200, "chinese": "金币"},
-    "starstone": {"amount": 200, "chinese": "星星"},
-    "luckygold": {"amount": 0.1, "chinese": "幸运币"},
-    "logindays": {"amount": 0.1, "chinese": "登录天数"}
+    "gold": {"amount": 100, "chinese": "金币"},
+    "starstone": {"amount": 100, "chinese": "星星"},
+    "luckygold": {"amount": 0.05, "chinese": "幸运币"},
+    "logindays": {"amount": 0.05, "chinese": "登录天数"}
 }
 
 # --- 核心游戏逻辑 ---
@@ -1248,6 +1249,11 @@ async def prize(bot, ev, prize_tier):
             user_gold = money.get_user_money(uid, 'gold')
             money.increase_user_money(uid, 'gold', user_gold)
             return special_prize
+        if special_prize == "钱包金币-1%":
+            user_gold = money.get_user_money(uid, 'gold')
+            user_gold = int(user_gold * 0.01)
+            money.reduce_user_money(uid, 'gold', user_gold)
+            return special_prize
         else:
             await add_user_item(uid, special_prize)
             return special_prize
@@ -1255,7 +1261,7 @@ async def prize(bot, ev, prize_tier):
         # 发放普通资源奖品
         prize_name = random.choice(list(PRIZES.keys()))
         prize_info = PRIZES[prize_name]
-        prize_amount = max(1, int(prize_info["amount"] * random.randint(10, 20) * config['multiplier']))
+        prize_amount = max(1, int(prize_info["amount"] * random.randint(5, 20) * config['multiplier']))
         money.increase_user_money(uid, prize_name, prize_amount)
         return f"{prize_info['chinese']} *{prize_amount}"
         
@@ -1317,53 +1323,41 @@ PREK_LIMITS_FILE = os.path.join(userPath, 'chaogu/daily_prek.json')
 # 领取低保的命令处理函数
 @sv.on_fullmatch("领低保")
 async def diabo(bot, ev):
-    uid = str(ev.user_id) # 建议将uid转为字符串，避免JSON的key为整数时产生问题
-    today_str = datetime.now().strftime('%Y-%m-%d') # 获取 "xxxx-xx-xx" 格式的今天日期
+    uid = str(ev.user_id)  
+    today_str = datetime.now().strftime('%Y-%m-%d')  # 获取 "xxxx-xx-xx" 格式的今天日期
 
     if config.dibao == 0:
         await bot.send(ev, "\n低保功能维护中，请稍候再试。" + no, at_sender=True)
         return
 
     # 从JSON文件加载数据
-    daily_limits = loadData(PREK_LIMITS_FILE, False)
+    daily_limits = loadData(PREK_LIMITS_FILE, {})  # 默认为空字典
 
-    # 如果今天还没有任何记录，则初始化今天的记录
-    if today_str not in daily_limits:
-        daily_limits[today_str] = {
-            "daily_count": 0,
-            "claimed_users": {}
-        }
-
-    # 1. 检查每日低保总数限制
-    if daily_limits[today_str]["daily_count"] >= 20:
-        await bot.send(ev, "\n今天20份低保已经发完了，明天再来吧。" + no, at_sender=True)
+    # 检查用户今天是否已经领取
+    if uid in daily_limits and daily_limits[uid] == today_str:
+        await bot.send(ev, f"\n你今天已经领过了，明天再来吧。" + no, at_sender=True)
         return
 
     if uid in gambling_sessions and gambling_sessions[uid].get('active', False) is True:
         await bot.send(ev, "\n赌徒不能领取低保哦~。" + no, at_sender=True)
         return
         
-    # 2. 检查用户今天是否已经领取
-    if uid in daily_limits[today_str]["claimed_users"]:
-        await bot.send(ev, f"\n你今天已经领过了，明天再来吧。" + no, at_sender=True)
-        return
-
-    # 3. 获取用户信息 (直接从数据库获取)
+    # 获取用户信息 (直接从数据库获取)
     user_info = await getUserInfo(uid)
 
-    # 4. 检查股票持仓
+    # 检查股票持仓
     user_portfolio = await get_user_portfolio(uid)  # 使用股票市场模块的函数获取持仓
     if user_portfolio:  # 如果持仓不为空
         stock_names = ", ".join(user_portfolio.keys())
         await bot.send(ev, f"\n检测到你偷偷藏了股票({stock_names})，这么富还想骗低保？" + no, at_sender=True)
         return
         
-    # 5. 判断是否符合领取条件
+    # 判断是否符合领取条件
     if user_info['fish']['🍙'] > 900:
         await bot.send(ev, "\n检测到你偷偷藏了鱼饵，这么富还想骗低保？" + no, at_sender=True)
         return
         
-    # 6. 检查背包中是否有鱼
+    # 检查背包中是否有鱼
     fish_types = ['🐟', '🦀', '🐠', '🦈', '🦐', '🐡', '🌟']  # 需要检查的鱼类列表
     for fish_type in fish_types:
         if user_info['fish'].get(fish_type, 0) >= 1:  # 如果不存在，默认值为0
@@ -1375,15 +1369,12 @@ async def diabo(bot, ev):
         await bot.send(ev, "\n这么富，还想骗低保？" + no, at_sender=True)
         return
 
-    # --- 更新数据并保存 ---
-    # 记录用户领取时间（日期）
-    daily_limits[today_str]["claimed_users"][uid] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    # 增加每日总数计数
-    daily_limits[today_str]["daily_count"] += 1
+    # 记录用户领取日期
+    daily_limits[uid] = today_str
     # 保存回JSON文件
     saveData(daily_limits, PREK_LIMITS_FILE)
 
-    # 7. 发放低保
+    # 发放低保
     pet = await get_user_pet(uid)
     if pet and not pet["runaway"]:
         money.increase_user_money(uid, 'gold', 6000)
@@ -1424,13 +1415,13 @@ async def buy_gem(bot, ev):
     else:
         await bot.send(ev, "购买失败，请稍后再试！", at_sender=True)
         
-@sv.on_prefix('退还宝石')
+@sv.on_prefix('出售宝石', '卖宝石')
 async def buy_gem(bot, ev):
     user_id = ev.user_id
     args = ev.message.extract_plain_text().strip().split()
     # 检查参数
     if not args or not args[0].isdigit():
-        await bot.send(ev, "请指定要退还的数量！\n例如：退还宝石 5", at_sender=True)
+        await bot.send(ev, "请指定要退还的数量！\n例如：卖宝石 5", at_sender=True)
         return
     quantity = int(args[0])
     if quantity <= 0:

@@ -70,10 +70,11 @@ bosstime = 2                    #是否开启boss战  0关闭  1开启  其余�
 min_rest = 1000                 #转账后最少需剩余多少金币
 dibao = 1                       #是否开启低保发放，0关闭，1开启
 transfer_fee = 0.1              #转账手续费比率，0为不收取
-stone_fee = 0.5                 #退还宝石手续费比率，0为不收取
+stone_fee = 0.05                   #退还宝石手续费比率，0为不收取
+return_item_fee = 0.5           #退还宠物用品手续费比率，0为不收取
 maxtype = 4                     #股票持有种类上限
 maxcount = 500                  #每种股票持有数量上限
-star_price = 1                  #多连钓鱼是否消耗对应数量的星星（1为消耗，0为不消耗）
+star_price = 0                  #多连钓鱼是否消耗对应数量的星星（1为消耗，0为不消耗）
 extra_gold = 1                  #钓鱼补贴（1为开启，0为关闭）
 abilityfee = 100                #生成超能力所需的金币
 
@@ -94,6 +95,8 @@ COMMENT_PRICE = 50                              #评论漂流瓶需要的金币�
 FRAG_TO_CRYSTAL = 50                            #碎片转化为水之心的数量
 CRYSTAL_TO_BOTTLE = 1                           #水之心转化为漂流瓶的数量
 CRYSTAL_TO_NET = 1                              #捞漂流瓶需要的水之心数量
+BLACKUSERS = []
+fish_limit_count = 10000                        #每日最大钓鱼次数（防止脚本）
 BLACKUSERS = []
 
 FISH_LIST = ['🐟', '🦐', '🦀', '🐡', '🐠', '🦈', '🌟']   # 可钓起的鱼列表，如果更新则务必在下面添加其价格和上钩概率

@@ -11,7 +11,7 @@ from .. import money, config
 from .._R import get, userPath
 from .util import shift_time_style, update_serif
 from ..utils import chain_reply, saveData, loadData
-from ..config import SEND_FORWARD, FISH_LIST, PROBABILITY_2, PROBABILITY
+from ..config import SEND_FORWARD, FISH_LIST, PROBABILITY_2, PROBABILITY, fish_limit_count
 from .get_fish import fishing, buy_bait, free_fish, sell_fish, change_fishrod, compound_bottle, increase_value, decrease_value, buy_bottle
 from .serif import cool_time_serif
 from .get_bottle import get_bottle_amount, check_bottle, format_message, check_permission, check_content, set_bottle, \
@@ -21,9 +21,10 @@ from .._interact import interact, ActSession
 from .evnet_functions import random_event
 from hoshino.typing import CQEvent as Event
 from ..utilize import get_double_mean_money
-from .async_util import load_to_save_data, getUserInfo
+from .async_util import load_to_save_data, getUserInfo, check_and_update_fish_limit, get_user_fish_count_today
 import os
 import asyncio
+
 
 default_info = {
     'fish': {'🐟': 0, '🦐': 0, '🦀': 0, '🐡': 0, '🐠': 0, '🔮': 0, '✉': 0, '🍙': 0},
@@ -366,7 +367,7 @@ hp_thresholds = {
 has_triggered = []  # 记录已触发的提醒
 
 # 拼手气红包的金币总量和数量
-REWARD_TOTAL_GOLD = 50000
+REWARD_TOTAL_GOLD = 100000
 REWARD_NUM = 10
 bosstime = config.bosstime
 @sv.on_fullmatch('捉萝莉')
@@ -496,6 +497,13 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
     if left_time(uid) > 0 and uid not in SUPERUSERS:
         await bot.send(ev, random.choice(cool_time_serif) + f'({int(left_time(uid))}s)')
         return
+    #检查次数限制
+    limit = await check_and_update_fish_limit(uid, times)
+    fish_count = await get_user_fish_count_today(uid)
+    rest_count = fish_limit_count - fish_count
+    if uid not in SUPERUSERS and not limit:
+        await bot.send(ev, f'\n今日钓鱼次数已达上限喔...你还能钓鱼{rest_count}次。\n明天再来吧~', at_sender = True)
+        return
     auto_buy = 0
     # 检查鱼饵数量
     if user_info['fish'].get('🍙', 0) < cost:
@@ -545,13 +553,13 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
         "mild_profit": f"（盈利250%时背对屏幕碎碎念）区区{int((value/actual_cost-1)*100)}%涨幅…（突然转身泪眼汪汪）肯、肯定把后半辈子的运气都透支了吧？！（掏出塔罗牌乱甩）看我逆转因果律——（牌面突然自燃）呜哇！连占卜都站在笨蛋那边？！这不公平！！( TДT)\n幸运币+1",
         "zero_value": f"（当value=0时用扫帚戳你）醒醒啦守财奴！（转扫帚当麦克风）恭喜解锁隐藏成就「氪金黑洞」！您刚才支付的¥{actual_cost}已成功转化为——（压低声音）宇宙暗物质、开发组年终奖以及本小姐的新皮肤！（转圈撒虚拟彩带）要放鞭炮庆祝吗？噼里啪啦嘭——！（其实是砸键盘声）",
         "extreme_profit": f"（盈利300%以上时瞳孔地震）这这这{int((value/actual_cost-1)*100)}%的收益率…（突然揪住你领子摇晃）快说！是不是绑架了程序猿的猫？！（掏出纸笔）现在立刻签这份《欧气共享契约》！否则就把你账号名叫「人傻钱多速来」挂公告栏哦！我认真的！！（契约上画满小恶魔涂鸦）\n幸运币+1",
-        "massive_profit_easy": f"\n幸运币+1",
-        "mild_profit_easy": f"\n幸运币+1",
-        "extreme_profit_easy": f"\n幸运币+1"
+        "massive_profit_easy": f"幸运币+1",
+        "mild_profit_easy": f"幸运币+2",
+        "extreme_profit_easy": f"幸运币+3"
     }
 
     # 汇总结果文本
-    summary_message = f"\n你的{command_name}汇总结果：\n发送 概率公示 可查活动和概率\n"
+    summary_message = f"你的{command_name}汇总结果：\n发送 概率公示 可查活动和概率\n"
     if auto_buy == 1:
         summary_message += f"(已自动购买{cost}个鱼饵~)\n"
     if result_summary:
@@ -559,13 +567,19 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
     else:
         summary_message += "你没有钓到任何有价值的鱼..."
     summary_message += f"\n总价值：{value}金币"
+    
     if not have_star and config.extra_gold == 1 and times == 100:
         money.increase_user_money(uid, 'gold', 300)
         summary_message += f"+300金币(活动补贴)"
-
+        actual_value = value + 300
+        value_message = f"总价值：{actual_value}金币"
+    else:
+        value_message = f"总价值：{value}金币"
     summary_message += f"\n总花费：{actual_cost}金币"
+    value_message += f" \n总花费：{actual_cost}金币"
     if config.star_price != 0:
         summary_message += f" {star_cost}星星"
+        value_message += f" {star_cost}星星"
     #if value / actual_cost < 1 and value / actual_cost >= 0.7:
         #summary_message += judge["loss_low"]
     #elif value / actual_cost < 0.7 and value / actual_cost >= 0.3:
@@ -578,25 +592,33 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
         #summary_message += judge["normal_profit"]
     #elif value / actual_cost > 1.5 and value / actual_cost <= 2:
         #summary_message += judge["double_up"]
+    first_line, rest = value_message.split('\n', 1)
     if value / actual_cost > 2 and value / actual_cost <= 2.5:
         money.increase_user_money(uid, 'luckygold', 1)
-        summary_message += judge["massive_profit_easy"]
+        summary_message += "\n"+judge["massive_profit_easy"]
+        value_message = f"{first_line} {judge['massive_profit_easy']}\n{rest}"
     elif value / actual_cost > 2.5 and value / actual_cost <= 3:
-        money.increase_user_money(uid, 'luckygold', 1)
-        summary_message += judge["mild_profit_easy"]
+        money.increase_user_money(uid, 'luckygold', 2)
+        summary_message += "\n"+judge["mild_profit_easy"]
+        value_message = f"{first_line} {judge['mild_profit_easy']}\n{rest}"
     elif value / actual_cost > 3:
-        money.increase_user_money(uid, 'luckygold', 1)
-        summary_message += judge["extreme_profit_easy"]
-    #elif value / actual_cost == 0.01:
-        #summary_message += judge["extreme_loss"]
+        money.increase_user_money(uid, 'luckygold', 3)
+        summary_message += "\n"+judge["extreme_profit_easy"]
+        value_message = f"{first_line} {judge['extreme_profit_easy']}\n{rest}"
     elif value == 0:
         summary_message += judge["zero_value"]
-
+        
     # 保存用户信息
     await load_to_save_data(user_info, uid)
-
+    count_message = f"今日已钓鱼：{fish_count}次\n剩余次数：{rest_count}次"
+    fish_chain = []
+    await chain_reply(bot, ev, fish_chain, summary_message)
+    await chain_reply(bot, ev, fish_chain, count_message)
+    await bot.send_group_forward_msg(group_id=ev.group_id, messages=fish_chain)
+    await asyncio.sleep(0.5)
+    await bot.send(ev, value_message)
     # 发送最终结果
-    await bot.send(ev, summary_message, at_sender=True)
+    #await bot.send(ev, summary_message, at_sender=True)
 
 
 # 重新定义触发函数
@@ -610,10 +632,10 @@ async def hundred_fishing(bot, ev):
 
 @sv.on_fullmatch('千连钓鱼')
 async def thousand_fishing(bot, ev):
-    if ev.user_id not in SUPERUSERS:
-        await bot.send(ev, f'非管理员账户，禁止执行开发功能！' +no, at_sender=True)
-        return
-    await multi_fishing(bot, ev, 1000, 1, 0, '千连钓鱼')
+#    if ev.user_id not in SUPERUSERS:
+#        await bot.send(ev, f'非管理员账户，禁止执行开发功能！' +no, at_sender=True)
+#        return
+    await multi_fishing(bot, ev, 1000, 9000, config.star_price * 1000, '千连钓鱼')
 
 @sv.on_fullmatch('万连钓鱼')
 async def tenthousand_fishing(bot, ev):
@@ -654,7 +676,7 @@ async def buy_bait_func(bot, ev):
         return
     await buy_bait(uid, num)
 #    if not uid % 173 and not uid % 1891433 and not uid % 6:
-#        money.increase_user_money(uid, 'gold', num * config.BAIT_PRICE * 0.04)
+#        money.increase_user_money(uid, 'gold', int(num * config.BAIT_PRICE * 0.05))
     await bot.send(ev, f'已经成功购买{num}个鱼饵啦~(金币-{num * config.BAIT_PRICE})')
 buy_bottle_cmd = [i + j + k for i in ['#', '＃']
                   for j in ['买', '购买'] for k in ['漂流瓶', '✉']]
