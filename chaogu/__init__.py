@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from ..utils import chain_reply, saveData, loadData
 from .._R import get, userPath
-from ..fishing.async_util import getUserInfo
+from ..fishing.async_util import getUserInfo, check_and_update_fish_limit
 from hoshino import Service, priv, R
 from hoshino.typing import CQEvent, MessageSegment
 from .. import money, config
@@ -892,6 +892,8 @@ async def record_gamble_today(user_id):
 
 def get_gamble_win_probability(gold, uid):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
+    if uid in SUPERUSERS:
+        return 0.85
     if gold < 10000:
         return 0.90
     elif gold < 50000:
@@ -1214,11 +1216,11 @@ MAX_TURNS_PER_DAY = 5
 
 # 1. 奖品概率配置
 PRIZE_CONFIG = {
-    '杂鱼': {'weight': 30, 'multiplier': 0.1, 'special_chance': 0.75, 'special_prizes': ["钱包金币-1%"]},
-    '普通': {'weight': 50, 'multiplier': 1, 'special_chance': 0.0, 'special_prizes': []},
-    '稀有': {'weight': 15, 'multiplier': 5, 'special_chance': 0.5, 'special_prizes': ["高级料理", "玩具球", "能量饮料", "普通扭蛋", "遗忘药水"]},
-    '史诗': {'weight': 4, 'multiplier': 20, 'special_chance': 0.5, 'special_prizes': ["豪华料理", "高级扭蛋", "时之泪", "最初的契约", "技能药水"]},
-    '传说': {'weight': 1, 'multiplier': 100, 'special_chance': 0.5, 'special_prizes': ["奶油蛋糕", "豪华蛋糕", "传说扭蛋", "誓约戒指", "钱包金币翻倍"]},
+    '杂鱼': {'weight': 30, 'multiplier': 0.1, 'fish_add': 0.1, 'special_chance': 0.75, 'special_prizes': ["钱包金币-1%"]},
+    '普通': {'weight': 50, 'multiplier': 1, 'fish_add': 1, 'special_chance': 0.0, 'special_prizes': []},
+    '稀有': {'weight': 15, 'multiplier': 5, 'fish_add': 3, 'special_chance': 0.5, 'special_prizes': ["高级料理", "玩具球", "能量饮料", "普通扭蛋", "遗忘药水"]},
+    '史诗': {'weight': 4, 'multiplier': 20, 'fish_add': 5, 'special_chance': 0.5, 'special_prizes': ["豪华料理", "高级扭蛋", "时之泪", "最初的契约", "技能药水"]},
+    '传说': {'weight': 1, 'multiplier': 100, 'fish_add': 10, 'special_chance': 0.5, 'special_prizes': ["奶油蛋糕", "豪华蛋糕", "传说扭蛋", "誓约戒指", "钱包金币翻倍"]},
 }
 
 TIERS = list(PRIZE_CONFIG.keys())
@@ -1228,7 +1230,7 @@ WEIGHTS = [details['weight'] for details in PRIZE_CONFIG.values()]
 PRIZES = {
     "gold": {"amount": 100, "chinese": "金币"},
     "starstone": {"amount": 100, "chinese": "星星"},
-    "luckygold": {"amount": 0.05, "chinese": "幸运币"},
+    "luckygold": {"amount": 0.25, "chinese": "幸运币"},
     "logindays": {"amount": 0.05, "chinese": "登录天数"}
 }
 
@@ -1265,7 +1267,21 @@ async def prize(bot, ev, prize_tier):
         money.increase_user_money(uid, prize_name, prize_amount)
         return f"{prize_info['chinese']} *{prize_amount}"
         
-        
+async def fish_count_prize(bot, ev, prize_tier):
+    """懒得写说明了..."""
+    uid = ev.user_id
+    config = PRIZE_CONFIG[prize_tier]
+    count = max (100, int(random.randint(5, 10) * config['fish_add'] * 100))
+    add_count = count * -1
+    if await check_and_update_fish_limit(uid, add_count):
+        return count
+    else:
+        return None
+    
+    
+    
+    
+    
 @sv.on_fullmatch('幸运大转盘', '幸运转盘')
 async def lucky_turntable_game(bot, ev):
     """处理幸运大转盘游戏逻辑"""
@@ -1308,11 +1324,11 @@ async def lucky_turntable_game(bot, ev):
     prize_tier = draw_prize()
     
     prize_description = await prize(bot, ev, prize_tier)
-
+    count = await fish_count_prize(bot, ev, prize_tier)
     # 3. 构造并发送最终的中奖消息
-    result_message = f"\n指针停在了【{prize_tier}】区域！\n"
-    result_message += f"您获得了：{prize_description}\n\n"
-    result_message += f"您今天还剩下 {remaining_turns} 次机会。"
+    result_message = f"\n指针停在了【{prize_tier}】区域！"
+    result_message += f"\n您获得了：{prize_description}\n额外奖励：钓鱼次数+{count}"
+    result_message += f"\n您今天还剩下 {remaining_turns} 次机会。"
 
     await bot.send(ev, result_message, at_sender=True)
 
