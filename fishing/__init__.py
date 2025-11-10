@@ -497,13 +497,7 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
     if left_time(uid) > 0 and uid not in SUPERUSERS:
         await bot.send(ev, random.choice(cool_time_serif) + f'({int(left_time(uid))}s)')
         return
-    #检查次数限制
-    limit = await check_and_update_fish_limit(uid, times)
-    fish_count = await get_user_fish_count_today(uid)
-    rest_count = fish_limit_count - fish_count
-    if uid not in SUPERUSERS and not limit:
-        await bot.send(ev, f'\n今日钓鱼次数已达上限喔...你还能钓鱼{rest_count}次。\n明天再来吧~', at_sender = True)
-        return
+
     auto_buy = 0
     # 检查鱼饵数量
     if user_info['fish'].get('🍙', 0) < cost:
@@ -514,15 +508,26 @@ async def multi_fishing(bot, ev, times, cost, star_cost, command_name):
         else:
             await bot.send(ev, f'金币或鱼饵不足喔...\n发送 领低保 来获取启动资金吧~')
             return
-    money.reduce_user_money(uid, 'starstone', star_cost)
+
+    #检查次数限制
+    limit = await check_and_update_fish_limit(uid, times)
+    fish_count, limit_count = await get_user_fish_count_today(uid)
+    rest_count = limit_count - fish_count
+    if uid not in SUPERUSERS and not limit:
+        await bot.send(ev, f'\n今日钓鱼次数已达上限喔...你还能钓鱼{rest_count}次。\n明天再来吧~', at_sender = True)
+        if auto_buy !=0:
+            money.increase_user_money(uid, 'gold', actual_cost)
+        return
+    
     # 启动钓鱼冷却
     start_cd(uid)
-
+    
+    money.reduce_user_money(uid, 'starstone', star_cost)
+    
     # 消耗饭团
     if auto_buy == 0:
         await decrease_value(uid, 'fish', '🍙', cost, user_info)
 
-    #await bot.send(ev, f'你开始了{command_name}！')
 
     # 汇总结果字典
     result_summary = {}
@@ -638,18 +643,34 @@ async def thousand_fishing(bot, ev):
     await multi_fishing(bot, ev, 1000, 9000, config.star_price * 1000, '千连钓鱼')
 
 @sv.on_fullmatch('万连钓鱼')
-async def tenthousand_fishing(bot, ev):
-    if ev.user_id not in SUPERUSERS:
-        await bot.send(ev, f'非管理员账户，禁止执行开发功能！' +no, at_sender=True)
-        return
-    await multi_fishing(bot, ev, 10000, 1, 0, '万连钓鱼')
+async def ten_thousand_fishing(bot, ev):
+#    if ev.user_id not in SUPERUSERS:
+#        await bot.send(ev, f'非管理员账户，禁止执行开发功能！' +no, at_sender=True)
+#        return
+    await multi_fishing(bot, ev, 10000, 90000, config.star_price * 10000, '万连钓鱼')
 
 @sv.on_fullmatch('十万连钓鱼')
-async def hundredthousand_fishing(bot, ev):
+async def hundred_thousand_fishing(bot, ev):
     if ev.user_id not in SUPERUSERS:
         await bot.send(ev, f'非管理员账户，禁止执行开发功能！' +no, at_sender=True)
         return
     await multi_fishing(bot, ev, 100000, 1, 0, '十万连钓鱼')
+    
+@sv.on_fullmatch('百万连钓鱼')
+async def million_fishing(bot, ev):
+    '''手动DDOS（确信）'''
+    if ev.user_id not in SUPERUSERS:
+        await bot.send(ev, f'非管理员账户，禁止执行开发功能！' +no, at_sender=True)
+        return
+    await multi_fishing(bot, ev, 1000000, 1, 0, '百万连钓鱼')
+
+@sv.on_fullmatch('千万连钓鱼')
+async def ten_million_fishing(bot, ev):
+    '''手动DDOS（确信）'''
+    if ev.user_id not in SUPERUSERS:
+        await bot.send(ev, f'非管理员账户，禁止执行开发功能！' +no, at_sender=True)
+        return
+    await multi_fishing(bot, ev, 10000000, 1, 0, '千万连钓鱼')
 
 ####################################################################
 @sv.on_prefix('#买鱼饵', '#买饭团', '#买🍙', '买鱼饵', '买🍙')

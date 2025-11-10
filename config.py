@@ -25,7 +25,7 @@ youdao_appkey = ''
 youdao_secret = ''
 
 # 随机美图
-AUTO_SAVE = True  # 是否保存到本地
+AUTO_SAVE = False  # 是否保存到本地
 AUTO_DELETE = False  # 是否撤回
 DELETE_TIME = 30  # 撤回的等待时间
 
@@ -38,7 +38,7 @@ SAVE_MODE = False  # 是否保存到本地
 DELETE_MODE = False  # 是否自动撤回
 
 # 今天吃什么
-foods_whitelist = [837052156, 974114299, 807505574]  # 可以添加菜谱的群聊，为空则所有人都能添加
+foods_whitelist = []  # 可以添加菜谱的群聊，为空则所有人都能添加
 
 # 网络代理
 proxies = {}
@@ -83,7 +83,7 @@ jm_price = 1000                 #查找车牌号的单次价格
 jm_group = [984760873, 971976533, 348831286, 748733770]
 # 钓鱼
 ADMIN_GROUP = 348831286                         #漂流瓶审核群(必须有一个)
-COOL_TIME = 30                                  #单抽钓鱼冷却时长
+COOL_TIME = 100                                  #单抽钓鱼冷却时长
 fishcd = 30                                     #除单抽钓鱼以外的通用钓鱼冷却
 THROW_COOL_TIME = 5                             #扔漂流瓶冷却时长
 SALVAGE_COOL_TIME = 5                           #捡漂流瓶冷却时长
@@ -97,7 +97,7 @@ CRYSTAL_TO_BOTTLE = 1                           #水之心转化为漂流瓶的�
 CRYSTAL_TO_NET = 1                              #捞漂流瓶需要的水之心数量
 BLACKUSERS = []
 fish_limit_count = 10000                        #每日最大钓鱼次数（防止脚本）
-BLACKUSERS = []
+
 
 FISH_LIST = ['🐟', '🦐', '🦀', '🐡', '🐠', '🦈', '🌟']   # 可钓起的鱼列表，如果更新则务必在下面添加其价格和上钩概率
 

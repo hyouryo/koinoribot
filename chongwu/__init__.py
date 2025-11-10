@@ -15,6 +15,7 @@ from hoshino.typing import CQEvent, MessageSegment
 from .. import money, config
 from .petconfig import GACHA_COST, GACHA_REWARDS, GACHA_CONSOLE_PRIZE, BASE_PETS, EVOLUTIONS, growth1, growth2, growth3, PET_SHOP_ITEMS, STATUS_DESCRIPTIONS, PET_SKILLS, GACHA_CONFIG
 from .pet import get_pet_data, get_user_pets, get_user_items, get_user_pet, update_user_pet, remove_user_pet, add_user_item, use_user_item, get_status_description, update_pet_status, check_pet_evolution
+from ..fishing.async_util import check_and_update_fish_limit
 from hoshino.config import SUPERUSERS
 
 no = get('emotion/no.png').cqcode
@@ -607,7 +608,7 @@ async def forget_skill(bot, ev):
     await bot.send(ev, f"成功让【{pet['name']}】遗忘了技能【{skill_name}】！", at_sender=True)
 
 
-# 宠物事件指令
+
 # 宠物事件指令
 @sv.on_fullmatch('宠物事件')
 async def trigger_pet_skills(bot, ev):
@@ -673,7 +674,7 @@ async def trigger_pet_skills(bot, ev):
                 money.increase_user_money(user_id, 'gold', amount)
                 results.append(f"\n{pet['name']}外出玩耍时捡到了一个钱包，里面有{amount}金币。")
             elif skill_name == "幸运星":
-                amount = random.randint(1, 3)
+                amount = random.randint(5, 7)
                 money.increase_user_money(user_id, 'luckygold', amount)
                 results.append(f"\n{pet['name']}外出玩耍时偶遇音祈，由于可爱的外表，深受对方喜爱，获得了上帝的祝福。幸运币+{amount}。")
             elif skill_name == "卖萌":
@@ -690,6 +691,14 @@ async def trigger_pet_skills(bot, ev):
                 pet["energy"] = min(pet["max_energy"], pet["energy"] + enum)
                 pet["happiness"] = min(pet["max_happiness"], pet["happiness"] + hnum)
                 results.append(f"\n{pet['name']}已经习惯了你早出晚归的生活，她知道你赚金币养她很不容易。通过自我情绪管理，她恢复{enum}精力和{hnum}好感。")
+            elif skill_name == "捕鱼达人":
+                is_cat = "猫" in pet["type"]
+                buff = 2 if is_cat else 1
+                stage = pet["stage"]
+                add_count = random.randint(1, 5) * 100 * (3 ** stage) * buff
+                await check_and_update_fish_limit(user_id, add_count*-1)
+                results.append(f"\n{pet['name']}在捕鱼大赛中名列前茅，赢得了鱼塘的特邀入场券。今日钓鱼次数+{add_count}。")
+                
             # 添加其他技能的处理...
             else:
                 results.append(f"【{skill_name}】是未知技能，无法发动。")
@@ -781,7 +790,7 @@ async def evolve_pet(bot, ev):
         if not await use_user_item(user_id, "奶油蛋糕"):
             await bot.send(ev, "进化需要奶油蛋糕！", at_sender=True)
             return
-        if random.random() < 0.5:
+        if random.random() < 0.6:
             await bot.send(ev, f"\n很可惜，{pet['name']}进化失败了...", at_sender=True)
             return
         # 随机选择进化分支
@@ -806,7 +815,7 @@ async def evolve_pet(bot, ev):
         if not await use_user_item(user_id, "豪华蛋糕"):
             await bot.send(ev, "进化需要豪华蛋糕！", at_sender=True)
             return
-        if random.random() < 0.6:
+        if random.random() < 0.5:
             await bot.send(ev, f"\n很可惜，{pet['name']}进化失败了...", at_sender=True)
             return
         if pet["type"] in EVOLUTIONS:
@@ -853,10 +862,14 @@ async def show_pet(bot, ev):
     elif evolution == "stage2":
         await bot.send(ev, f"你的宠物可以进化为成年体了！使用'进化宠物'来让它进化。", at_sender=True)
     
+    hunger = pet["hunger"] / pet["max_hunger"] * 100
+    energy = pet["energy"] / pet["max_energy"] * 100
+    happiness = pet["happiness"] / pet["max_happiness"] * 100
+
     # 显示宠物状态
-    hunger_desc = await get_status_description("hunger", pet["hunger"])
-    energy_desc = await get_status_description("energy", pet["energy"])
-    happiness_desc = await get_status_description("happiness", pet["happiness"])
+    hunger_desc = await get_status_description("hunger", hunger)
+    energy_desc = await get_status_description("energy", energy)
+    happiness_desc = await get_status_description("happiness", happiness)
     adopted_date = datetime.fromtimestamp(pet["adopted_time"]).strftime('%Y-%m-%d')
     
     stage_name = {
@@ -1065,7 +1078,7 @@ async def eternal_oath(bot, ev):
     pet['growth'] += 1000
     pet['growth_rate'] = round(pet['growth_rate'] * 1.1, 2)
     await update_user_pet(user_id, pet)
-    await bot.send(ev, f"\n(成长值+1000)\n(基础成长速度+10%)\n{pet['name']}有些害羞的看着你，乖巧地等你为她戴上戒指，最后轻轻在你额头上落下一吻...\n“以后...不许丢下我。”", at_sender=True)
+    await bot.send(ev, f"\n成长值+1000\n基础成长速度+10%\n最大技能数量+999\n\n{pet['name']}有些害羞的看着你，乖巧地等你为她戴上戒指，最后轻轻在你额头上落下一吻...\n“以后...不许丢下我。”", at_sender=True)
 
 
 
@@ -1075,7 +1088,7 @@ async def eternal_oath(bot, ev):
 pet_help = """
 宠物养成系统帮助：
 【扭蛋系统】
-1. 购买扭蛋 [数量] - 购买宠物扭蛋(10宝石/个)
+1. 购买普通/高级/传说扭蛋 [数量] - 购买宠物扭蛋
 2. 开启扭蛋 - 开启一个扭蛋(可能获得宠物或安慰奖)
 3. 领养宠物 [名字] - 领养扭蛋获得的宠物
 4. 放弃宠物 - 放弃扭蛋获得的宠物
@@ -1083,16 +1096,17 @@ pet_help = """
 【宠物用品】
 1. 宠物商店 - 查看可购买的宠物用品
 2. 购买 [名称] [数量] - 购买指定宠物用品
-3. 宠物背包 - 查看拥有的宠物用品
-4. 投喂 [料理名称] -消耗【对应的料理】
-5. 丟玩具球 - 消耗【玩具球】
-6. 寻回宠物 - 消耗【最初的契约】
-7. 重置进化路线 - 消耗【时之泪】
-8. 进化宠物 - 消耗1个 【奶油蛋糕/豪华蛋糕】
-9. 补充精力 - 消耗1个 【能量饮料】
-10.学习技能 - 消耗1个 【技能药水】（具体请发送 技能帮助）
-11.遗忘 [技能名称] - 消耗1个 【遗忘药水】
-12.永恒誓约 - 消耗1个 【誓约戒指】
+3. 退还 [名称] [数量] - 以『50%的价格』退还指定宠物用品
+4. 宠物背包 - 查看拥有的宠物用品
+5. 投喂 [料理名称] -消耗【对应的料理】
+6. 丟玩具球 - 消耗【玩具球】
+7. 寻回宠物 - 消耗【最初的契约】
+8. 重置进化路线 - 消耗【时之泪】
+9. 进化宠物 - 消耗1个 【奶油蛋糕/豪华蛋糕】
+10. 补充精力 - 消耗1个 【能量饮料】
+11.学习技能 - 消耗1个 【技能药水】（具体请发送 技能帮助）
+12.遗忘 [技能名称] - 消耗1个 【遗忘药水】
+13.永恒誓约 - 消耗1个 【誓约戒指】
 
 【宠物管理】
 1. 我的宠物 - 查看宠物状态
@@ -1124,20 +1138,17 @@ async def pet_help_command(bot, ev):
     await chain_reply(bot, ev, chain, pet_help)
     await bot.send_group_forward_msg(group_id=ev.group_id, messages=chain)
     
-pet_skill = """
-幼年体/成长体/成年体可学习1/3/5个技能
+skill_list = []
+for skill_name, skill_info in PET_SKILLS.items():
+    skill_list.append(f'"{skill_name}": {skill_info["description"]}')
+
+pet_skill = f"""幼年体/成长体/成年体可学习1/3/5个技能
 指令：
 学习技能 （消耗1个技能药水）
 遗忘技能 技能名称 （消耗1个遗忘药水） 
 可学习的技能一览：
-"宝石爱好者": 捡回一些宝石
-"盼望长大":  获得一些成长值
-"金币爱好者": 捡回一些金币
-"美食家": 捡回随机食物
-"自我管理": 恢复一些精力和好感度
-"卖萌": 获得一定的星星
-"幸运星": 捡回一些幸运币
-"""
+{chr(10).join(skill_list)}"""
+
 @sv.on_fullmatch(('查看所有技能', '技能百科', '技能帮助'))
 async def pet_skillhelp_command(bot, ev):
     chain = []

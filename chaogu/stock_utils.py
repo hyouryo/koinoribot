@@ -132,6 +132,15 @@ async def init_stock_database():
              )
         ''')
         
+        # 创建gamble_reduce表（梦灵零花钱贡献记录）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gamble_record (
+                uid TEXT PRIMARY KEY,
+                reduce_record INTEGER NOT NULL DEFAULT 0,
+                increase_record INTEGER NOT NULL DEFAULT 0
+             )
+        ''')
+        
         conn.commit()
         conn.close()
     
@@ -301,7 +310,6 @@ async def update_user_portfolio(user_id, stock_name, change_amount):
         conn.commit()
         conn.close()
         return True
-    
     return await asyncio.get_event_loop().run_in_executor(None, _update)
 
 async def get_current_stock_price(stock_name, stock_data=None):
@@ -349,6 +357,7 @@ async def delete_user_all_accounts(user_id):
     
 async def delete_user_stock_account(user_id):
     """删除用户股票账户数据"""
+    await ensure_stock_database_initialized()
     try:
         uid = str(user_id)
         
@@ -367,6 +376,60 @@ async def delete_user_stock_account(user_id):
     except Exception as e:
         print(f'删除股票账户失败[{uid}]: {str(e)}')
         return False
+
+async def update_gamble_record(uid: str, change_amount: int) -> bool:
+    """更新gamble_reduce记录 (正数增加increase_record，负数增加reduce_record)"""
+    await ensure_stock_database_initialized()
+    
+    def _update():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        if change_amount >= 0:
+            # 正数：增加increase_record
+            cursor.execute('''
+                INSERT INTO gamble_record (uid, increase_record, reduce_record) 
+                VALUES (?, ?, 0)
+                ON CONFLICT(uid) DO UPDATE SET 
+                increase_record = increase_record + excluded.increase_record
+            ''', (uid, change_amount))
+        else:
+            # 负数：增加reduce_record（取绝对值）
+            cursor.execute('''
+                INSERT INTO gamble_record (uid, increase_record, reduce_record) 
+                VALUES (?, 0, ?)
+                ON CONFLICT(uid) DO UPDATE SET 
+                reduce_record = reduce_record + excluded.reduce_record
+            ''', (uid, abs(change_amount)))
+        
+        conn.commit()
+        conn.close()
+        return True
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _update)
+
+async def get_all_gamble_record() -> dict:
+    """查询所有用户的记录，返回{uid: {increase_record: x, reduce_record: y}}字典"""
+    await ensure_stock_database_initialized()
+    
+    def _query():
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT uid, increase_record, reduce_record FROM gamble_record')
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        return {
+            uid: {
+                'increase_record': increase_record,
+                'reduce_record': reduce_record
+            } for uid, increase_record, reduce_record in results
+        }
+    
+    return await asyncio.get_event_loop().run_in_executor(None, _query)
+
 
 
 # 市场事件定义 MARKET_EVENTS

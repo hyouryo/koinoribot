@@ -20,7 +20,7 @@ from ..chongwu.pet import get_user_pet, add_user_item
 from collections import defaultdict
 sv = Service('stock_market', manage_priv=priv.ADMIN, enable_on_default=True)
 from hoshino.config import SUPERUSERS
-from .stock_utils import STOCKS, MARKET_EVENTS, MANUAL_EVENT_TYPES, get_stock_data, save_stock_data, get_user_portfolios, save_user_portfolios, get_user_portfolio, update_user_portfolio, get_current_stock_price, get_stock_price_history, delete_user_all_accounts, HISTORY_DURATION_HOURS
+from .stock_utils import STOCKS, MARKET_EVENTS, MANUAL_EVENT_TYPES, get_stock_data, save_stock_data, get_user_portfolios, save_user_portfolios, get_user_portfolio, update_user_portfolio, get_current_stock_price, get_stock_price_history, delete_user_all_accounts, HISTORY_DURATION_HOURS, update_gamble_record, get_all_gamble_record
 no = get('emotion/no.png').cqcode
 ok = get('emotion/ok.png').cqcode
 
@@ -858,7 +858,7 @@ GAMBLE_LIMITS_FILE = os.path.join(userPath, 'chaogu/daily_gamble_limits.json')
 MAX_GAMBLE_ROUNDS = 5
 
 # 赌博状态管理 (内存中)
-# key: user_id, value: {'round': int, 'confirmed': bool, 'active': bool}
+# key: user_id, value: {'round': int, 'confirmed': bool, 'active': bool, 'win': float, 'start_gold: int'}
 gambling_sessions = {}
 
 
@@ -890,22 +890,21 @@ async def record_gamble_today(user_id):
     limits[user_id_str] = today_str
     await save_gamble_limits(limits)
 
-def get_gamble_win_probability(gold, uid):
+def get_gamble_win_probability(gold, user_id):
     """根据金币数量计算获胜概率 (返回 0 到 1 之间的值)"""
-    if uid in SUPERUSERS:
-        return 0.85
     if gold < 10000:
-        return 0.90
+        win = 0.90
     elif gold < 50000:
-        return 0.70
+        win = 0.70
     elif gold < 100000:
-        return 0.60
+        win = 0.60
     elif gold < 1000000:
-        return 0.50
+        win = 0.50
     elif gold < 10000000:
-        return 0.30
+        win = 0.30
     else: # 超过一千万
-        return 0.10 
+        win = 0.10 
+    gambling_sessions[user_id]['win'] = win
 
 async def perform_gamble_round(user_id):
     """执行一轮赌博并更新金币"""
@@ -913,24 +912,25 @@ async def perform_gamble_round(user_id):
     if current_gold is None or current_gold <= 0:
         return {"success": False, "message": "你没有金币可以用来豪赌。"}
 
-    win_prob = get_gamble_win_probability(current_gold, user_id)
-    win = random.random() < win_prob
+    get_gamble_win_probability(current_gold, user_id)
+    win = random.random() < (gambling_sessions[user_id]['win'] if user_id not in SUPERUSERS else gambling_sessions[user_id]['win'] + 0.5)
 
     if win:
         new_gold = round(current_gold * 2, 2)
         change = new_gold - current_gold
         money.increase_user_money(user_id, 'gold', change)
+        #await update_gamble_record(user_id, change)
         outcome = "胜利"
         multiplier = 2
     else:
-        new_gold = round(current_gold * 0.01, 2)
-        # 确保金币不会变成负数，虽然 *0.01 不太可能，但以防万一
+        new_gold = round(current_gold * 0.01, 2) 
         if new_gold < 0: new_gold = 0
         change = int(current_gold - new_gold) # 计算减少了多少
         money.reduce_user_money(user_id, 'gold', change)
+        #await update_gamble_record(user_id, -change)
         outcome = "失败"
         multiplier = 0.01
-
+    get_gamble_win_probability(new_gold, user_id)
     return {
         "success": True,
         "outcome": outcome,
@@ -952,7 +952,15 @@ async def handle_start_gamble(bot, ev: CQEvent):
     if not await check_daily_gamble_limit(user_id) and user_id not in SUPERUSERS:
         await bot.send(ev, "你今天已经赌过了，明天再来吧！人生的大起大落可经不起天天折腾哦。", at_sender=True)
         return
+
+
+    # 初始化会话状态
+    gambling_sessions[user_id] = {'round': 0, 'confirmed': False, 'active': False, 'win': 0, 'start_gold': 0} # active=False 表示等待确认
+    
     gold = int(money.get_user_money(user_id, 'gold'))
+    gambling_sessions[user_id]['start_gold'] = gold
+    get_gamble_win_probability(gold, user_id)
+    win = gambling_sessions[user_id]['win'] * 100
     # 显示规则并请求确认
     rules = f"""\n🎲 一场豪赌 规则 🎲
 你即将开始一场紧张又刺激的豪赌！
@@ -961,12 +969,9 @@ async def handle_start_gamble(bot, ev: CQEvent):
 2. 你可以在任何一轮结束后选择 '见好就收' 带着当前金币离场。
 3 一旦开始，直到完成 {MAX_GAMBLE_ROUNDS} 轮或选择收手，否则无法进行其他操作（包括买卖股票）。
 你当前持有 {gold} 枚金币
-"富贵险中求"，确认开始吗？
+当前获胜概率: {win}%
 发送 确认 继续。
 发送 算了 取消。"""
-
-    # 初始化会话状态
-    gambling_sessions[user_id] = {'round': 0, 'confirmed': False, 'active': False} # active=False 表示等待确认
     await bot.send(ev, rules, at_sender=True)
 
 @sv.on_fullmatch('确认')
@@ -975,7 +980,7 @@ async def handle_confirm_gamble(bot, ev: CQEvent):
 
     # 检查用户是否处于待确认状态
     if user_id not in gambling_sessions or gambling_sessions[user_id].get('confirmed', False):
-        await bot.send(ev, "\n请先发送 '一场豪赌' 来开始新的赌局。", at_sender=True)
+        #await bot.send(ev, "\n请先发送 '一场豪赌' 来开始新的赌局。", at_sender=True)
         return
     luckygold = money.get_user_money(user_id, 'luckygold')
     if luckygold < 1:
@@ -991,28 +996,22 @@ async def handle_confirm_gamble(bot, ev: CQEvent):
 
     #await bot.send(ev, f"很好，有胆识！第 1 轮豪赌开始...", at_sender=True)
     #await asyncio.sleep(1) # 增加一点戏剧性
-
     # 执行第一轮
     result = await perform_gamble_round(user_id)
-
+    #gold = int(money.get_user_money(user_id, 'gold'))
+    #get_gamble_win_probability(gold, user_id)
+    win = gambling_sessions[user_id]['win'] * 100
     if not result["success"]:
         await bot.send(ev, f"豪赌失败：{result['message']}", at_sender=True)
         del gambling_sessions[user_id] # 清理会话
         return
 
     # 发送第一轮结果
-    message = f"""\n第 1 轮结果：【{result['outcome']}】
+    message = f"""\n第1轮结果:【{result['outcome']}】
 金币变化：{result['old_gold']:.2f} -> {result['new_gold']:.2f} (x{result['multiplier']})"""
 
-    if result['new_gold'] <= 0:
-        message += "\n你已经输光了所有金币...赌局结束。"
-        del gambling_sessions[user_id]
-    elif gambling_sessions[user_id]['round'] >= MAX_GAMBLE_ROUNDS:
-        message += f"\n你已完成全部 {MAX_GAMBLE_ROUNDS} 轮豪赌，赌局结束！"
-        del gambling_sessions[user_id]
-    else:
-        message += f"\n发送 '继续' 进行第 {gambling_sessions[user_id]['round'] + 1} 轮，或发送 '见好就收' 离场。"
-
+    message += f"\n发送 '继续' 进行第 {gambling_sessions[user_id]['round'] + 1} 轮，或发送 '见好就收' 离场。"
+    message += f"\n当前获胜概率: {win}%"
     await bot.send(ev, message, at_sender=True)
 
 
@@ -1022,33 +1021,23 @@ async def handle_continue_gamble(bot, ev: CQEvent):
 
     # 检查用户是否在活跃的赌局中且未完成
     if user_id not in gambling_sessions or not gambling_sessions[user_id].get('active', False):
-        await bot.send(ev, "你当前没有正在进行的赌局。请先发送 '一场豪赌' 开始。", at_sender=True)
+        #await bot.send(ev, "你当前没有正在进行的赌局。请先发送 '一场豪赌' 开始。", at_sender=True)
         return
 
     current_round = gambling_sessions[user_id]['round']
     if current_round >= MAX_GAMBLE_ROUNDS:
         await bot.send(ev, f"你已经完成了全部 {MAX_GAMBLE_ROUNDS} 轮豪赌，不能再继续了。", at_sender=True)
-        # 可以选择在这里也清理会话
-        # if user_id in gambling_sessions: del gambling_sessions[user_id]
         return
-
-    # 检查金币是否足够（虽然 perform_gamble_round 也会检查，这里可以提前告知）
-    current_gold = money.get_user_money(user_id, 'gold')
-    if current_gold is None or current_gold <= 0:
-         await bot.send(ev, "你已经没有金币了，无法继续豪赌。", at_sender=True)
-         if user_id in gambling_sessions: del gambling_sessions[user_id] # 清理会话
-         return
 
     # 进入下一轮
     next_round = current_round + 1
     gambling_sessions[user_id]['round'] = next_round
-
-    #await bot.send(ev, f"第 {next_round} 轮豪赌开始...", at_sender=True)
-    #await asyncio.sleep(1)
-
+    
     # 执行赌博
     result = await perform_gamble_round(user_id)
-
+    #gold = int(money.get_user_money(user_id, 'gold'))
+    #get_gamble_win_probability(gold, user_id)
+    win = gambling_sessions[user_id]['win'] * 100
     if not result["success"]:
         await bot.send(ev, f"豪赌失败：{result['message']}", at_sender=True)
         del gambling_sessions[user_id] # 清理会话
@@ -1058,15 +1047,16 @@ async def handle_continue_gamble(bot, ev: CQEvent):
     message = f"""\n第 {next_round} 轮结果：【{result['outcome']}】
 金币变化：{result['old_gold']:.2f} -> {result['new_gold']:.2f} (x{result['multiplier']})"""
 
-    if result['new_gold'] <= 0:
-        message += "\n你已经输光了所有金币...赌局结束。"
-        del gambling_sessions[user_id]
-    elif gambling_sessions[user_id]['round'] >= MAX_GAMBLE_ROUNDS:
+    if gambling_sessions[user_id]['round'] >= MAX_GAMBLE_ROUNDS:
         message += f"\n你已完成全部 {MAX_GAMBLE_ROUNDS} 轮豪赌，赌局结束！"
+        final_gold = money.get_user_money(user_id, 'gold')
+        start_gold = gambling_sessions[user_id]['start_gold']
+        change = final_gold - start_gold
+        await update_gamble_record(user_id, change)
         del gambling_sessions[user_id]
     else:
         message += f"\n发送 '继续' 进行第 {gambling_sessions[user_id]['round'] + 1} 轮，或发送 '见好就收' 离场。"
-
+        message += f"\n当前获胜概率: {win}%"
     await bot.send(ev, message, at_sender=True)
 
 
@@ -1078,19 +1068,96 @@ async def handle_stop_gamble(bot, ev: CQEvent):
         # 如果用户输入'算了'但没有赌局，可以给个通用回复
         #await bot.send(ev, "你当前没有正在进行的赌局。", at_sender=True)
         return
-
-    # 清理会话状态
     current_round = gambling_sessions[user_id].get('round', 0)
     confirmed = gambling_sessions[user_id].get('confirmed', False)
-    del gambling_sessions[user_id]
-
     if not confirmed: # 如果是在规则确认阶段输入'算了'
          await bot.send(ev, "好吧，谨慎总是好的。赌局已取消。", at_sender=True)
     elif current_round > 0: # 如果是赌了几轮后收手
         final_gold = money.get_user_money(user_id, 'gold')
+        start_gold = gambling_sessions[user_id]['start_gold']
+        change = final_gold - start_gold
+        await update_gamble_record(user_id, change)
         await bot.send(ev, f"明智的选择！你在第 {current_round} 轮后选择离场，当前金币为 {final_gold:.2f}。赌局结束。", at_sender=True)
-    else: # 理论上不应该到这里，但也处理一下
+    else: 
          await bot.send(ev, "赌局已结束。", at_sender=True)
+    # 清理会话状态
+    del gambling_sessions[user_id]
+
+@sv.on_fullmatch('豪赌榜')
+async def gamble_ranking(bot, ev):
+    '''根据净收益(increase_record - reduce_record)排名'''
+    all_user_record = await get_all_gamble_record()
+    
+    # 计算净收益
+    user_net_gains = []
+    for user_id, records in all_user_record.items():
+        if int(user_id) not in SUPERUSERS:  # 排除超级用户
+            net_gain = records['increase_record'] - records['reduce_record']
+            if net_gain > 0: 
+                user_net_gains.append((user_id, net_gain))
+    
+    # 按净收益大小降序排序
+    sorted_users = sorted(user_net_gains, key=lambda x: x[1], reverse=True)
+    
+    # 构建排行榜消息
+    msg = "梦灵零的花钱都给了谁：\n"
+    i = 1
+    for user_id, net_gain in sorted_users[:10]:  # 取前10名
+        msg += f"第{i}名: {user_id} 累计取走: {net_gain}金币\n"
+        i += 1
+    
+    if len(msg) == len("梦灵零的花钱都给了谁：\n"):
+        msg += "暂无零花钱记录"
+    
+    chain = []
+    await chain_reply(bot, ev, chain, msg)
+    await bot.send_group_forward_msg(group_id=ev.group_id, messages=chain)
+
+@sv.on_fullmatch('戒赌榜', '零花钱贡献榜', '梦灵零花钱贡献榜')
+async def gamble_record_ranking(bot, ev):
+    '''根据净贡献(reduce_record - increase_record)排名'''
+    all_user_record = await get_all_gamble_record()
+    
+    user_net_contributions = []
+    for user_id, records in all_user_record.items():
+        if int(user_id) not in SUPERUSERS:  # 排除超级用户
+            net_contribution = records['reduce_record'] - records['increase_record']
+            if net_contribution > 0:  
+                user_net_contributions.append((user_id, net_contribution))
+    
+    # 按净贡献大小降序排序
+    sorted_users = sorted(user_net_contributions, key=lambda x: x[1], reverse=True)
+    
+    # 构建排行榜消息
+    msg = "梦灵的零花钱来源：\n"
+    i = 1
+    for user_id, net_contribution in sorted_users[:10]:  # 取前10名
+        msg += f"第{i}名: {user_id} 累计存入: {net_contribution}金币\n"
+        i += 1
+    
+    if len(msg) == len("梦灵的零花钱来源：\n"):
+        msg += "暂无零花钱记录"
+    
+    chain = []
+    await chain_reply(bot, ev, chain, msg)
+    await bot.send_group_forward_msg(group_id=ev.group_id, messages=chain)
+    
+@sv.on_fullmatch('零花钱记录', '豪赌记录', '金币记录')
+async def gamble_record(bot, ev):
+    uid =str(ev.user_id)
+    all_user_record = await get_all_gamble_record()
+    user_record = all_user_record.get(uid, {'increase_record': 0, 'reduce_record': 0})
+    increase_record = user_record['increase_record']
+    reduce_record = user_record['reduce_record']
+    msg =f"\n你已累计将{reduce_record}金币『暂存』在梦灵酱的钱包里；"
+    msg += f"\n你已累计从梦灵酱的钱包里拿走了{increase_record}金币。"
+    if increase_record<reduce_record:
+        false_record = reduce_record- increase_record
+        msg += f"\n\n“唔...一共送给人家{false_record}金币的零花呢...谢谢你~”"
+    if increase_record>reduce_record:
+        win_record = increase_record - reduce_record
+        msg += f"\n\n“唔...从人家钱包里拿走了{win_record}金币的零花呢...坏蛋！”"
+    await bot.send(ev, msg, at_sender =True)
 
 ##################################################################################################################
 # 转账手续费比例
