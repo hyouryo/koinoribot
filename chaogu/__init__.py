@@ -10,6 +10,7 @@ import asyncio # 用于文件锁
 import io         # 用于在内存中处理图像
 import plotly.graph_objects as go
 import plotly.io as pio
+import re
 from ..utils import chain_reply, saveData, loadData
 from .._R import get, userPath
 from ..fishing.async_util import getUserInfo, check_and_update_fish_limit
@@ -1164,12 +1165,25 @@ async def gamble_record(bot, ev):
 TRANSFER_FEE_RATE = config.transfer_fee
 
 # 1. 用户转账功能
-@sv.on_rex(r'^转账\s*(\d+)\s*(\d+)$')
-async def transfer_money(bot, ev):
+@sv.on_prefix("转账")
+async def transfer_money(bot, ev: CQEvent):
     sender_uid = ev.user_id  # 转账人uid
-    match = ev['match']
-    recipient_uid = int(match[1])  # 收款人uid
-    amount = int(match[2])  # 转账金额
+    match = ev.message
+    # 匹配是否为@触发
+    if len(match) == 2:
+        if match[0]["type"] == "at":
+            recipient_uid = int(match[0]["data"]["qq"])
+        if match[1]["type"] == "text":
+            try:
+                amount = int(match[1]["data"]["text"])
+            except ValueError:
+                pass
+    #回退到以前版本
+    else:
+        match = match.extract_plain_text()
+        num = re.match(r'\s*(\d+)\s*(\d+)$', match)
+        recipient_uid = int(num.group(1))
+        amount = int(num.group(2))
 
     if ev.user_id in config.BLACKUSERS:
         await bot.send(ev, '\n操作失败，账户被冻结，请联系管理员寻求帮助。' +no, at_sender=True)
